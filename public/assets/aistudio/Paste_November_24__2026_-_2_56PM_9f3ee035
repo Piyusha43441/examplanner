@@ -1,0 +1,1397 @@
+
+Build a complete, production-quality web application named "EXAM PLANNER – AI Exam Seating & Management System".
+
+IMPORTANT:
+Do not build just a landing page, UI mockup, demo, or static dashboard. Build a fully functional web application with real authentication, Firebase database integration, working seating allocation logic, data validation, PDF generation, file upload/import, dashboard, and all core features.
+
+==================================================
+1. PRODUCT VISION
+==================================================
+
+Exam Planner is an AI-assisted examination management platform for schools, colleges, universities, coaching institutes, and examination centers.
+
+The primary purpose is to let an institution enter simple examination information such as:
+
+- Total students or roll number range
+- Number of examination rooms/classrooms
+- Rows per classroom
+- Benches per row
+- Seating capacity per bench (1 student or 2 students)
+- Optional student names
+- Optional subject/exam information
+- Optional classroom names
+- Optional room-specific capacities
+
+The application must automatically calculate the entire seating arrangement.
+
+The user should NOT have to manually assign students to classrooms, rows, benches, or seats.
+
+Example input:
+
+Total Roll Numbers: 1 to 50
+Number of Classrooms: 5
+Rows per Classroom: 3
+Benches per Row: 10
+Students per Bench: 1
+
+The system should automatically create:
+
+Classroom 1
+Row 1 → Bench 1 → Roll No. 1
+Row 1 → Bench 2 → Roll No. 2
+Row 1 → Bench 3 → Roll No. 3
+Continue sequentially.
+
+After Row 1 is full:
+Row 2 → Bench 1 → next roll number
+Continue until the classroom capacity is reached.
+
+Then automatically continue to Classroom 2, Classroom 3, Classroom 4, Classroom 5, etc.
+
+If there are more available seats than students, show EMPTY.
+
+If there are more students than seating capacity, DO NOT silently exclude students. Show a clear capacity error and offer to increase the rooms, rows, benches, or seating mode.
+
+==================================================
+2. APPLICATION DESIGN
+==================================================
+
+Create a modern, premium, professional SaaS interface.
+
+Design style:
+- Clean, minimal, modern educational SaaS
+- Professional dark navy, white and subtle blue accents
+- Elegant typography
+- Responsive layout
+- Desktop-first but mobile compatible
+- Beautiful cards, tables, dashboard charts and navigation
+- Smooth transitions, subtle animations and loading states
+- Clear visual hierarchy
+- Accessible UI
+- No excessive animations
+- No fake data pretending to be real institution records
+- No fake testimonials
+- No fake analytics
+- No nonfunctional buttons
+
+Application name:
+EXAM PLANNER
+
+Tagline:
+Smart Examination Seating. Zero Manual Allocation.
+
+Create a professional logo/icon related to examinations, classrooms, seating plans or organization.
+
+==================================================
+3. AUTHENTICATION & INSTITUTION REGISTRATION
+==================================================
+
+Use Firebase Authentication with Email and Password authentication.
+
+No OTP verification.
+No phone OTP.
+No SMS verification.
+No mandatory email OTP verification for initial registration.
+
+Users should register by filling:
+
+PERSONAL DETAILS:
+- Full name of the person registering
+- Email address (mandatory)
+- Password (mandatory)
+- Confirm password
+
+INSTITUTION DETAILS:
+- School / College / University / Coaching Institute name
+- Institution type dropdown:
+  - School
+  - College
+  - University
+  - Coaching Institute
+  - Examination Center
+  - Other
+- Institution complete address
+- City
+- State
+- PIN code
+- Mobile number
+- Optional institution logo
+
+Registration should automatically create the account and save institution information in Firebase.
+
+After registration:
+- Automatically sign the user in.
+- Open their institution dashboard.
+- Save their profile and institution information.
+- Remember their login session securely.
+- Allow login again with email and password.
+
+Login screen:
+- Email
+- Password
+- Login button
+- Forgot password
+- Create new account
+
+Implement Firebase password reset email functionality.
+
+Every institution must have its own private data space.
+
+One institution must NEVER be able to see another institution's examination data, uploaded files, seating plans, students, or reports.
+
+==================================================
+4. FIREBASE BACKEND
+==================================================
+
+Use Firebase as the backend.
+
+Required Firebase services:
+
+1. Firebase Authentication
+   - Email and password registration
+   - Login
+   - Logout
+   - Password reset
+
+2. Cloud Firestore
+   - User profiles
+   - Institution profiles
+   - Examination records
+   - Student records
+   - Classroom configurations
+   - Seating plans
+   - Generated reports
+   - Allocation history
+   - Audit logs
+
+3. Firebase Storage
+   - Institution logos
+   - Uploaded CSV files
+   - Uploaded Excel files
+   - Uploaded student data
+   - Generated PDF files, if persistent storage is required
+
+Use a proper Firestore structure, for example:
+
+users/{uid}
+
+institutions/{institutionId}
+
+institutions/{institutionId}/exams/{examId}
+
+institutions/{institutionId}/exams/{examId}/students/{studentId}
+
+institutions/{institutionId}/exams/{examId}/classrooms/{classroomId}
+
+institutions/{institutionId}/exams/{examId}/seatingPlans/{planId}
+
+institutions/{institutionId}/auditLogs/{logId}
+
+Each institution's data must be isolated.
+
+Implement Firebase security rules:
+- Only authenticated users can access the application.
+- Users can access only institutions they are authorized to access.
+- Users cannot access other institutions' data by changing a URL or document ID.
+- Protect uploaded documents.
+- Validate ownership and permissions.
+- Do not expose passwords, API keys, private credentials or sensitive Firebase configuration.
+- Use Firebase configuration through environment variables where appropriate.
+- Never hardcode service account credentials in frontend code.
+
+If Firebase is not configured yet:
+- Build the complete application.
+- Create a clearly marked Firebase configuration setup area/file.
+- Show a useful configuration message.
+- Do not pretend that data is being saved if Firebase is not connected.
+- Provide setup instructions in the application or README.
+
+==================================================
+5. DASHBOARD
+==================================================
+
+After login, create a professional dashboard containing:
+
+- Institution name
+- Logged-in user's name
+- Total examinations
+- Total students registered for examinations
+- Total classrooms configured
+- Total seating plans generated
+- Recent examinations
+- Recent seating plan activity
+- Quick actions
+
+Quick action buttons:
+
+1. Create New Examination
+2. Generate Seating Plan
+3. Upload Student Data
+4. Manage Classrooms
+5. View Previous Seating Plans
+6. Download Reports
+
+Include a sidebar navigation:
+
+- Dashboard
+- Create Examination
+- Student Data
+- Classroom Setup
+- Seating Planner
+- Generated Plans
+- PDF Reports
+- Examination History
+- Institution Profile
+- Settings
+- Logout
+
+==================================================
+6. CREATE EXAMINATION
+==================================================
+
+Create a step-by-step examination creation wizard.
+
+STEP 1: EXAM DETAILS
+
+Fields:
+
+- Examination name
+- Examination type
+- Academic year
+- Exam date
+- Optional examination time
+- Optional subject
+- Optional class/course
+- Optional semester
+- Optional notes
+
+STEP 2: STUDENT INFORMATION
+
+Provide multiple ways to add students:
+
+OPTION A: ROLL NUMBER RANGE
+
+Allow users to input:
+
+Starting Roll Number
+Ending Roll Number
+
+Example:
+Starting Roll Number: 1
+Ending Roll Number: 50
+
+Generate students from 1 through 50 inclusively.
+
+Support numeric roll numbers and alphanumeric roll numbers.
+
+Examples:
+1 to 50
+001 to 050
+BCA2026001 to BCA2026050
+
+IMPORTANT:
+Never convert a roll number into an incorrect number.
+
+Preserve leading zeros.
+
+If roll number 00015 is provided, preserve it as 00015.
+
+Do not round roll numbers.
+Do not truncate roll numbers.
+Do not change the format of roll numbers.
+Do not treat roll numbers as ordinary numeric values when formatting is important.
+
+OPTION B: UPLOAD STUDENT DATA
+
+Allow upload of:
+- CSV
+- XLSX
+- Excel spreadsheets
+
+Allow optional columns:
+- Roll Number (mandatory for uploaded student records)
+- Student Name (optional)
+- Class
+- Course
+- Section
+- Subject
+
+Provide a template download.
+
+Allow users to map their uploaded columns to the application's fields.
+
+Preview uploaded data before accepting it.
+
+OPTION C: MANUAL ENTRY
+
+Allow adding students individually.
+
+Fields:
+- Roll Number (required)
+- Student Name (optional)
+- Class (optional)
+- Section (optional)
+
+OPTION D: PASTE DATA
+
+Allow users to paste data directly from Excel or a table.
+
+Parse tab-separated data.
+
+Display a preview.
+
+IMPORTANT MISSING STUDENT NAME POLICY:
+
+Student names are OPTIONAL.
+
+If a teacher or institution fails to provide a student's name, the application must still process that student correctly.
+
+Do not block the seating plan.
+
+Do not reject the student.
+
+Do not invent a student name.
+
+Display:
+Roll No. 25
+Name: Not Provided
+
+Or in the PDF:
+Roll No. 25 (Name Not Provided)
+
+The roll number is the primary identity of the student for seating allocation.
+
+Missing names must not cause the seating allocation to fail.
+
+==================================================
+7. CLASSROOM CONFIGURATION
+==================================================
+
+Allow two classroom setup modes.
+
+MODE A: SIMPLE CONFIGURATION
+
+The user can simply enter:
+
+- Total number of classrooms
+- Rows in each classroom
+- Benches in each row
+- Seating mode
+
+Example:
+
+Total Classrooms: 5
+Rows per Classroom: 3
+Benches per Row: 10
+
+The system automatically creates:
+
+Classroom 1
+Row 1
+Bench 1 through Bench 10
+
+Row 2
+Bench 1 through Bench 10
+
+Row 3
+Bench 1 through Bench 10
+
+Repeat for Classroom 2 through Classroom 5.
+
+MODE B: ADVANCED CONFIGURATION
+
+Allow users to create classrooms individually.
+
+Each classroom can have:
+- Classroom name
+- Room number
+- Building
+- Floor
+- Number of rows
+- Number of benches in each row
+- Custom seating capacity
+- Optional room notes
+- Optional disabled benches
+
+Support classrooms with different capacities.
+
+Allow users to:
+- Add a classroom
+- Edit a classroom
+- Delete a classroom
+- Duplicate a classroom
+- Disable a classroom
+- Add or remove rows
+- Add or remove benches
+
+Show a visual classroom preview.
+
+==================================================
+8. SEATING MODE
+==================================================
+
+Provide a clear selection before generating the seating plan.
+
+MODE 1:
+ONE STUDENT PER BENCH
+
+Each bench contains:
+Seat 1: One student
+Seat 2: Empty/not applicable
+
+MODE 2:
+TWO STUDENTS PER BENCH
+
+Each bench contains:
+Seat 1: One student
+Seat 2: One student
+
+The application must calculate total capacity automatically.
+
+Formula:
+
+Total benches =
+Sum of benches across all classrooms
+
+Total capacity =
+Total benches × students per bench
+
+Display:
+
+Total Students
+Total Benches
+Total Available Seats
+Required Capacity
+Unused Seats
+Capacity Status
+
+If capacity is insufficient, show:
+
+"Insufficient seating capacity. You have X students but only Y available seats."
+
+Do not generate an incomplete seating plan without clearly informing the user.
+
+==================================================
+9. SEATING ALLOCATION ENGINE
+==================================================
+
+This is the most important part of the application.
+
+The actual seating allocation MUST be handled by deterministic, tested application code.
+
+DO NOT use Gemini or another AI model to assign roll numbers directly.
+
+AI must never invent, rewrite, modify, round, truncate, remove, duplicate or reorder roll numbers during allocation.
+
+Create a reliable seating allocation engine.
+
+DEFAULT ALLOCATION ORDER:
+
+1. Classroom 1
+2. Row 1
+3. Bench 1
+4. Bench 2
+5. Bench 3
+6. Continue through all benches in Row 1
+7. Row 2
+8. Continue through all rows
+9. Move to Classroom 2
+10. Repeat until all students are seated
+
+If seating mode is ONE STUDENT PER BENCH:
+
+Bench 1 → Roll Number 1
+Bench 2 → Roll Number 2
+Bench 3 → Roll Number 3
+
+Continue sequentially.
+
+If seating mode is TWO STUDENTS PER BENCH:
+
+Bench 1 → Seat 1: Roll Number 1
+Bench 1 → Seat 2: Roll Number 2
+
+Bench 2 → Seat 1: Roll Number 3
+Bench 2 → Seat 2: Roll Number 4
+
+Continue sequentially.
+
+If only one student remains for a bench:
+Seat 1 → Student
+Seat 2 → EMPTY
+
+Do not seat more students than the configured capacity.
+
+Do not skip any student.
+
+Do not assign a student twice.
+
+Do not create an extra student.
+
+Do not alter student roll numbers.
+
+The seating engine must use a stable, predictable order.
+
+DEFAULT ORDER:
+Sort by the imported/original order, or by natural roll-number ordering when the user explicitly chooses sorting.
+
+Provide a sorting option:
+
+- Original Input Order
+- Ascending Roll Number
+- Custom Order
+
+Do not automatically sort alphanumeric roll numbers incorrectly.
+
+==================================================
+10. OPTIONAL SEATING STRATEGIES
+==================================================
+
+Provide optional allocation strategies:
+
+1. Sequential Allocation
+   Students are allocated in sequential order.
+
+2. Alternate Roll Number Allocation
+   When possible, distribute roll numbers in alternating patterns to reduce neighboring consecutive roll numbers.
+
+3. Course/Section Separation
+   If students have course or section data, optionally keep specific sections separated.
+
+4. Custom Allocation Rules
+   Allow institution-specific rules.
+
+Sequential Allocation should be the default.
+
+Clearly explain the selected allocation strategy.
+
+==================================================
+11. AI AGENTIC DATA VALIDATION SYSTEM
+==================================================
+
+Create an AI-assisted multi-agent validation system.
+
+Use Gemini for analysis and reasoning where appropriate.
+
+However, AI must NEVER be the source of truth for roll numbers or the final seating allocation.
+
+Create the following logical AI agents:
+
+AGENT 1: DATA SCANNER
+
+Responsibilities:
+- Scan uploaded CSV, Excel and pasted data.
+- Detect columns.
+- Identify roll-number columns.
+- Detect missing names.
+- Identify empty rows.
+- Identify invalid formatting.
+- Detect duplicate records.
+- Detect unexpected characters.
+- Detect inconsistent roll-number patterns.
+- Detect missing roll numbers in a sequence.
+- Detect suspicious data.
+
+AGENT 2: DATA VALIDATION AGENT
+
+Responsibilities:
+- Compare uploaded data with the user's entered roll number range.
+- Check that the expected number of students matches the actual number of students.
+- Verify duplicates.
+- Verify missing roll numbers.
+- Verify whether the roll-number range is complete.
+- Verify that roll numbers have not been altered.
+- Verify that all students are accounted for.
+
+AGENT 3: CLASSROOM CAPACITY AGENT
+
+Responsibilities:
+- Calculate classroom capacity.
+- Calculate total bench count.
+- Calculate seating capacity.
+- Check whether the institution has enough seats.
+- Detect invalid room configurations.
+- Detect zero benches or invalid rows.
+- Detect disabled benches.
+- Warn when capacity is insufficient.
+
+AGENT 4: SEATING AUDIT AGENT
+
+Responsibilities:
+- Audit the generated seating plan.
+- Compare the original student list against the allocated student list.
+- Check for duplicate seating.
+- Check for missing students.
+- Check for students assigned outside capacity.
+- Check for invalid classroom, row, bench or seat identifiers.
+- Confirm all roll numbers remain unchanged.
+- Produce an audit report.
+
+AGENT 5: PDF QUALITY CHECK AGENT
+
+Responsibilities:
+- Check that all allocated students appear in the PDF.
+- Check that no classroom or row is missing.
+- Check that roll numbers are readable.
+- Check that page breaks do not cut off critical information.
+- Check that empty benches are correctly labelled.
+- Check that the PDF contains the correct examination information.
+
+AGENT 6: ORCHESTRATOR AGENT
+
+Responsibilities:
+- Coordinate the other agents.
+- Analyze uploaded data.
+- Explain issues in plain language.
+- Recommend corrections.
+- Trigger validation.
+- Trigger the deterministic seating engine.
+- Trigger final audit.
+- Trigger PDF generation after successful validation.
+
+The agents may operate as logical modules or separate orchestrated AI calls.
+
+Avoid unnecessary AI API calls.
+
+Use deterministic validation code for mathematical, exact and security-critical checks.
+
+AI should explain errors and provide recommendations, but application code should determine whether the allocation is correct.
+
+==================================================
+12. ERROR DETECTION & DATA SAFETY
+==================================================
+
+Before generating the final seating plan, run a complete audit.
+
+Validation checklist:
+
+[ ] Student count matches the expected number.
+[ ] No duplicate roll numbers.
+[ ] No missing roll numbers in the expected sequence, if sequential mode is selected.
+[ ] No student has been omitted.
+[ ] No student has been assigned twice.
+[ ] No roll number has changed.
+[ ] Classroom capacity is sufficient.
+[ ] Bench capacity is sufficient.
+[ ] Every allocation references a valid classroom.
+[ ] Every allocation references a valid row.
+[ ] Every allocation references a valid bench.
+[ ] Every allocation references a valid seat.
+[ ] No seat has more students than allowed.
+[ ] No student exists outside the seating plan.
+[ ] All original student records remain available.
+
+Show a validation summary before PDF generation.
+
+If errors are detected:
+- Show the errors clearly.
+- Do not silently fix critical errors.
+- Allow users to review and correct the data.
+- Clearly separate warnings from critical errors.
+- Allow missing names as warnings, not critical errors.
+
+After allocation, show:
+
+Total Students
+Allocated Students
+Unallocated Students
+Duplicate Assignments
+Missing Students
+Capacity Status
+Audit Status
+
+Only show "VERIFIED" if all critical checks pass.
+
+==================================================
+13. SEATING PLAN PREVIEW
+==================================================
+
+Before generating the PDF, show an interactive seating preview.
+
+Allow users to navigate:
+
+Examination
+→ Classroom
+→ Row
+→ Bench
+
+Display the layout visually.
+
+Example:
+
+CLASSROOM 1
+
+ROW 1
+
+[Bench 1]
+Seat 1: Roll No. 1
+
+[Bench 2]
+Seat 1: Roll No. 2
+
+[Bench 3]
+Seat 1: Roll No. 3
+
+Continue for every bench.
+
+For two-student mode:
+
+[Bench 1]
+Seat 1: Roll No. 1
+Seat 2: Roll No. 2
+
+[Bench 2]
+Seat 1: Roll No. 3
+Seat 2: Roll No. 4
+
+When names exist, show the student name below the roll number.
+
+When names are missing:
+Show "Name Not Provided".
+
+Show EMPTY for unused seats.
+
+Allow users to:
+- View classroom-wise
+- View row-wise
+- Search a roll number
+- Find which classroom a student is assigned to
+- Find row, bench and seat
+- Download the plan
+- Print the plan
+
+==================================================
+14. PDF GENERATION – CORE FEATURE
+==================================================
+
+Generate a real downloadable PDF, not an image pretending to be a PDF.
+
+Use a reliable PDF generation library such as jsPDF with AutoTable, pdf-lib, or another compatible library.
+
+The PDF must be professionally designed and printer-friendly.
+
+Provide two PDF formats:
+
+PDF FORMAT A: CLASSROOM-WISE SEATING PLAN
+
+Generate one or multiple pages.
+
+Header:
+
+EXAM PLANNER
+EXAMINATION SEATING PLAN
+
+Institution Name
+Institution Address
+
+Examination Name
+Examination Date
+Subject
+Class/Course
+Academic Year
+Seating Mode
+
+Classroom: CLASSROOM 1
+
+Then display the seating arrangement.
+
+For example:
+
+CLASSROOM 1
+
+ROW 1
+
+BENCH 1 | ROLL NO. 1
+BENCH 2 | ROLL NO. 2
+BENCH 3 | ROLL NO. 3
+BENCH 4 | ROLL NO. 4
+BENCH 5 | ROLL NO. 5
+BENCH 6 | ROLL NO. 6
+BENCH 7 | ROLL NO. 7
+BENCH 8 | ROLL NO. 8
+BENCH 9 | ROLL NO. 9
+BENCH 10 | ROLL NO. 10
+
+ROW 2
+
+BENCH 1 | ROLL NO. 11
+BENCH 2 | ROLL NO. 12
+
+Continue correctly.
+
+If there are 3 rows and 10 benches per row:
+
+Classroom 1:
+Row 1 → Roll Numbers 1–10
+Row 2 → Roll Numbers 11–20
+Row 3 → Roll Numbers 21–30
+
+Classroom 2:
+Row 1 → Roll Numbers 31–40
+Row 2 → Roll Numbers 41–50
+Row 3 → EMPTY
+
+This example assumes ONE STUDENT PER BENCH.
+
+If TWO STUDENTS PER BENCH is selected, display both seat assignments per bench.
+
+The PDF must support:
+- Multiple classrooms
+- Multiple rows
+- Multiple benches
+- One student per bench
+- Two students per bench
+- Different classroom capacities
+- Missing student names
+- Long roll numbers
+- Alphanumeric roll numbers
+- Empty seats
+- Multiple pages
+
+PDF FORMAT B: CLASSROOM PRINT SHEET
+
+Generate an individual printable seating plan for each classroom.
+
+Each classroom PDF page or section should clearly display:
+
+- Institution name
+- Examination name
+- Date
+- Classroom name
+- Seating mode
+- Rows
+- Benches
+- Student roll numbers
+- Student names, when available
+- Empty seat indicators
+
+Create a clean table format:
+
+| Row | Bench | Seat 1 Roll No. | Seat 1 Name | Seat 2 Roll No. | Seat 2 Name |
+
+For single seating, Seat 2 can be hidden.
+
+For double seating, show both seats.
+
+Use readable fonts.
+
+Use appropriate margins.
+
+Do not let columns overlap.
+
+Do not truncate roll numbers.
+
+Support landscape orientation if needed.
+
+Allow:
+- Download All Classrooms PDF
+- Download Individual Classroom PDF
+- Print
+- Save PDF
+- Export CSV
+
+==================================================
+15. PDF VISUAL DESIGN
+==================================================
+
+Create professional PDF formatting.
+
+Use:
+- Clean typography
+- Institution logo if provided
+- Examination header
+- Classroom header
+- Clear row and bench labels
+- Alternating table row shading
+- Page numbering
+- Footer with generated date
+- Verification summary
+- Signature space for examination coordinator
+- Signature space for invigilator
+
+Example footer:
+
+Generated using EXAM PLANNER
+Seating Allocation Audit: VERIFIED
+Page X of Y
+
+The PDF must be readable when printed in black and white.
+
+Do not use large dark backgrounds that consume printer ink.
+
+==================================================
+16. EXAMINATION DATA MANAGEMENT
+==================================================
+
+Allow users to save examinations.
+
+Users should be able to:
+
+- Create new examinations
+- Save drafts
+- Edit examination details
+- Edit student records
+- Edit classroom configuration
+- Regenerate seating plans
+- View previously generated plans
+- Download previously generated PDFs
+- Duplicate an examination
+- Delete an examination
+- Archive completed examinations
+
+When modifying a seating plan:
+- Keep previous versions in history.
+- Record the changes.
+- Do not overwrite previous allocation history without permission.
+
+==================================================
+17. SEARCH & STUDENT LOOKUP
+==================================================
+
+Create a search feature.
+
+Search by:
+- Roll number
+- Student name
+- Classroom
+- Row
+- Bench
+
+If the user searches Roll Number 25, show:
+
+Student:
+Roll Number: 25
+Name: [Name or Not Provided]
+Classroom: Classroom 1
+Row: Row 3
+Bench: Bench 5
+Seat: Seat 1
+
+Make search accurate.
+
+Do not use AI for exact roll-number lookup.
+
+Use the database and allocation records.
+
+==================================================
+18. REPORTS & EXPORTS
+==================================================
+
+Provide:
+
+- Full examination seating plan PDF
+- Classroom-wise PDF
+- Student allocation list
+- Roll-number-wise allocation report
+- Classroom capacity report
+- Audit report
+- CSV export
+- Printable classroom sheets
+
+The reports should include institution details.
+
+==================================================
+19. SECURITY & PRIVACY
+==================================================
+
+Protect examination information.
+
+Implement:
+- Firebase authentication
+- Firestore security rules
+- Institution-level data isolation
+- Secure file uploads
+- File type validation
+- File size limits
+- Authentication-protected routes
+- Safe logout
+- Password reset
+- No public student databases
+- No publicly accessible examination PDFs by default
+
+Student data should only be accessible to authorized users from the institution.
+
+Do not send student information to Gemini unless required for data analysis and explicitly allowed.
+
+Do not send passwords, authentication tokens or private credentials to AI.
+
+Prefer local/deterministic code for validation.
+
+==================================================
+20. USER EXPERIENCE
+==================================================
+
+The user should be able to create a complete seating plan with very little effort.
+
+Provide a QUICK GENERATION mode.
+
+The user should only need to enter:
+
+1. Examination name
+2. Roll number start
+3. Roll number end
+4. Number of classrooms
+5. Rows per classroom
+6. Benches per row
+7. One student per bench OR two students per bench
+
+Then click:
+
+GENERATE SEATING PLAN
+
+The application should automatically:
+
+1. Generate student roll numbers.
+2. Calculate seating capacity.
+3. Create classroom structures.
+4. Allocate students.
+5. Validate the allocation.
+6. Run the seating audit.
+7. Show the interactive preview.
+8. Generate the printable PDF.
+
+The user must NOT have to manually fill:
+- Classroom names for every room
+- Row names
+- Bench names
+- Seat names
+- Student allocation
+- Roll number allocation
+
+Generate all of these automatically.
+
+==================================================
+21. EXAMPLE CALCULATION
+==================================================
+
+Implement this exact example as a test case.
+
+Input:
+
+Roll Number Start: 1
+Roll Number End: 50
+Classrooms: 5
+Rows per Classroom: 3
+Benches per Row: 10
+Seating Mode: One student per bench
+
+Expected:
+
+Total Students: 50
+Total Classrooms: 5
+Rows per Classroom: 3
+Benches per Row: 10
+Total Benches: 150
+Total Seating Capacity: 150
+Students Allocated: 50
+Unused Seats: 100
+
+Expected allocation:
+
+CLASSROOM 1
+
+ROW 1:
+Bench 1 = Roll 1
+Bench 2 = Roll 2
+Bench 3 = Roll 3
+Bench 4 = Roll 4
+Bench 5 = Roll 5
+Bench 6 = Roll 6
+Bench 7 = Roll 7
+Bench 8 = Roll 8
+Bench 9 = Roll 9
+Bench 10 = Roll 10
+
+ROW 2:
+Bench 1 = Roll 11
+Bench 2 = Roll 12
+Bench 3 = Roll 13
+Bench 4 = Roll 14
+Bench 5 = Roll 15
+Bench 6 = Roll 16
+Bench 7 = Roll 17
+Bench 8 = Roll 18
+Bench 9 = Roll 19
+Bench 10 = Roll 20
+
+ROW 3:
+Bench 1 = Roll 21
+Bench 2 = Roll 22
+Bench 3 = Roll 23
+Bench 4 = Roll 24
+Bench 5 = Roll 25
+Bench 6 = Roll 26
+Bench 7 = Roll 27
+Bench 8 = Roll 28
+Bench 9 = Roll 29
+Bench 10 = Roll 30
+
+CLASSROOM 2
+
+ROW 1:
+Bench 1 = Roll 31
+Bench 2 = Roll 32
+Bench 3 = Roll 33
+Bench 4 = Roll 34
+Bench 5 = Roll 35
+Bench 6 = Roll 36
+Bench 7 = Roll 37
+Bench 8 = Roll 38
+Bench 9 = Roll 39
+Bench 10 = Roll 40
+
+ROW 2:
+Bench 1 = Roll 41
+Bench 2 = Roll 42
+Bench 3 = Roll 43
+Bench 4 = Roll 44
+Bench 5 = Roll 45
+Bench 6 = Roll 46
+Bench 7 = Roll 47
+Bench 8 = Roll 48
+Bench 9 = Roll 49
+Bench 10 = Roll 50
+
+ROW 3:
+All benches = EMPTY
+
+CLASSROOM 3:
+All benches = EMPTY
+
+CLASSROOM 4:
+All benches = EMPTY
+
+CLASSROOM 5:
+All benches = EMPTY
+
+The output must match the above expected result exactly.
+
+==================================================
+22. TESTING
+==================================================
+
+Create automated tests for the seating allocation engine.
+
+Test:
+
+TEST 1:
+Roll numbers 1–50
+5 classrooms
+3 rows
+10 benches
+1 student per bench
+
+Expected:
+Roll 1 = Classroom 1, Row 1, Bench 1
+Roll 10 = Classroom 1, Row 1, Bench 10
+Roll 11 = Classroom 1, Row 2, Bench 1
+Roll 20 = Classroom 1, Row 2, Bench 10
+Roll 21 = Classroom 1, Row 3, Bench 1
+Roll 30 = Classroom 1, Row 3, Bench 10
+Roll 31 = Classroom 2, Row 1, Bench 1
+Roll 50 = Classroom 2, Row 2, Bench 10
+
+TEST 2:
+Roll numbers 1–50
+5 classrooms
+3 rows
+10 benches
+2 students per bench
+
+Expected:
+Roll 1 = Classroom 1, Row 1, Bench 1, Seat 1
+Roll 2 = Classroom 1, Row 1, Bench 1, Seat 2
+Roll 3 = Classroom 1, Row 1, Bench 2, Seat 1
+Roll 4 = Classroom 1, Row 1, Bench 2, Seat 2
+
+TEST 3:
+Missing student names.
+
+Expected:
+All students are allocated correctly.
+Missing names do not cause errors.
+Name is shown as "Not Provided".
+
+TEST 4:
+Duplicate roll numbers.
+
+Expected:
+Validation error.
+Do not generate verified PDF.
+
+TEST 5:
+Insufficient capacity.
+
+Expected:
+Clear capacity error.
+Do not silently drop students.
+
+TEST 6:
+Leading zero roll numbers.
+
+Input:
+001, 002, 003, 004
+
+Expected:
+The PDF must preserve 001, 002, 003, 004.
+
+TEST 7:
+Alphanumeric roll numbers.
+
+Input:
+BCA001, BCA002, BCA003
+
+Expected:
+Preserve original values.
+
+TEST 8:
+Long roll numbers.
+
+Expected:
+No truncation.
+No alteration.
+PDF must remain readable.
+
+TEST 9:
+Search student.
+
+Expected:
+Correct classroom, row, bench and seat.
+
+TEST 10:
+PDF generation.
+
+Expected:
+All classrooms, rows, benches and students appear correctly.
+PDF must be downloadable and printable.
+
+==================================================
+23. TECHNICAL IMPLEMENTATION
+==================================================
+
+Use a modern technology stack compatible with Google AI Studio:
+
+- React
+- TypeScript
+- Modern CSS or Tailwind CSS
+- Firebase Authentication
+- Cloud Firestore
+- Firebase Storage
+- Gemini API for AI agent analysis
+- A reliable PDF library
+- CSV/XLSX import libraries
+- React Router
+- Modular, reusable components
+
+Architecture:
+
+Frontend:
+- Authentication
+- Dashboard
+- Examination creation
+- Student data import
+- Classroom setup
+- Seating preview
+- Search
+- Reports
+- Settings
+
+Core logic:
+- Student data normalization
+- Roll-number validation
+- Classroom capacity calculation
+- Deterministic seating allocation
+- Seating audit
+- PDF generation
+
+AI layer:
+- Data scanner
+- Validation assistant
+- Capacity assistant
+- Seating audit assistant
+- PDF quality checker
+- Orchestrator
+
+Backend:
+- Firebase Authentication
+- Firestore
+- Firebase Storage
+- Secure institution-specific access
+
+Keep the seating allocation engine separate from AI logic.
+
+Use reusable components.
+
+Use proper TypeScript types.
+
+Handle errors gracefully.
+
+Do not create a giant monolithic component.
+
+Do not leave unfinished TODO placeholders for core functionality.
+
+Do not implement fake PDF downloads.
+
+Do not create fake authentication.
+
+Do not create nonfunctional buttons.
+
+Do not use mock data as the actual user database.
+
+==================================================
+24. FINAL BUILD REQUIREMENTS
+==================================================
+
+Build the complete working application now.
+
+Prioritize:
+
+1. Authentication and registration
+2. Firebase database
+3. Institution profile
+4. Examination creation
+5. Roll-number generation
+6. Classroom configuration
+7. One student / two students per bench
+8. Deterministic seating allocation
+9. Data validation
+10. Seating audit
+11. Interactive preview
+12. Search
+13. PDF generation
+14. CSV/XLSX import
+15. Examination history
+16. Responsive design
+17. Security
+18. AI validation agents
+
+The first version must already support the complete workflow:
+
+REGISTER
+→ LOGIN
+→ CREATE EXAM
+→ ENTER ROLL NUMBER RANGE
+→ CONFIGURE CLASSROOMS
+→ SELECT SEATING MODE
+→ GENERATE
+→ VALIDATE
+→ AUDIT
+→ PREVIEW
+→ DOWNLOAD PDF
+→ PRINT
+
+Do not stop after creating the dashboard.
+
+Do not just explain how to build it.
+
+Implement as much of the complete working application as possible inside the project.
+
+If external Firebase credentials are required, create the complete integration and explain precisely which Firebase configuration values the user needs to add.
+
+The finished application should feel like a real commercial SaaS product that a school, college or university can actually use.
+
+APP NAME:
+EXAM PLANNER
+
+TAGLINE:
+Smart Examination Seating. Zero Manual Allocation.

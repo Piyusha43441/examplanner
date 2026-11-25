@@ -1,0 +1,61 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Default deny all
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        request.auth.token.email == 'agarwalpiyush263@gmail.com' &&
+        request.auth.token.email_verified == true &&
+        (!('admin' in request.auth.token) || request.auth.token.admin == true);
+    }
+
+    // Payment proof screenshots / PDFs: private to uploader and verified admin only
+    // Note: Firestore uses a named database (not '(default)'), so institution ownership is enforced
+    // via authenticated UID binding + customMetadata matching and verified against institutions/{id}
+    // in firestore.rules and client pre-upload checks.
+    match /paymentProofs/{institutionId}/{userId}/{fileName} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if isSignedIn() &&
+        request.auth.uid == userId &&
+        institutionId.size() >= 1 &&
+        institutionId.size() <= 128 &&
+        institutionId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        userId.size() >= 1 &&
+        userId.size() <= 128 &&
+        userId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        fileName.size() >= 3 &&
+        fileName.size() <= 200 &&
+        fileName.matches('^[a-zA-Z0-9_\\-]+_[a-zA-Z0-9._\\-]+$') &&
+        request.resource != null &&
+        request.resource.size > 0 &&
+        request.resource.size <= 5 * 1024 * 1024 &&
+        (
+          request.resource.contentType == 'image/jpeg' ||
+          request.resource.contentType == 'image/jpg' ||
+          request.resource.contentType == 'image/png' ||
+          request.resource.contentType == 'application/pdf'
+        ) &&
+        request.resource.metadata != null &&
+        request.resource.metadata['institutionId'] == institutionId &&
+        request.resource.metadata['userId'] == userId &&
+        request.resource.metadata['paymentRequestId'] is string &&
+        request.resource.metadata['paymentRequestId'].size() >= 1 &&
+        request.resource.metadata['paymentRequestId'].size() <= 128 &&
+        request.resource.metadata['paymentRequestId'].matches('^[a-zA-Z0-9_\\-]+$');
+      allow update, delete: if false;
+    }
+
+    // Existing institution assets (logos, imports, pdfs) restricted to authenticated users under institution
+    match /institutions/{institutionId}/{folder}/{fileName} {
+      allow read, write: if false;
+    }
+  }
+}

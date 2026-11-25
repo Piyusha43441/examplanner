@@ -1,0 +1,25 @@
+name = "exam-planner-api"
+main = "src/index.ts"
+compatibility_date = "2025-02-14"
+workers_dev = true
+
+[vars]
+FIREBASE_PROJECT_ID = "abstract-freehold-6cf5x"
+FIREBASE_DATABASE_ID = "ai-studio-57bf1b23-c825-4dd4-8d38-a183f4ad98fb"
+ADMIN_EMAIL = "agarwalpiyush263@gmail.com"
+ALLOWED_ORIGINS = "https://ais-dev-aewbzri6lknsxvnf6a3cii-697000586977.asia-east1.run.app,https://ais-pre-aewbzri6lknsxvnf6a3cii-697000586977.asia-east1.run.app,https://verdant-basbousa-591ec6.netlify.app,http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173"
+
+# Replace database_id with the UUID returned by:
+#   npx wrangler d1 create exam_planner_db
+[[d1_databases]]
+binding = "DB"
+database_name = "exam_planner_db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+# Private R2 bucket created by:
+#   npx wrangler r2 bucket create exam-planner-payment-proofs
+# Keep public access disabled on this bucket. All proof reads go through authenticated Worker routes.
+[[r2_buckets]]
+binding = "PROOF_BUCKET"
+bucket_name = "exam-planner-payment-proofs"

@@ -1,0 +1,807 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isOwnerUid(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        request.auth.token.email == 'agarwalpiyush263@gmail.com' &&
+        request.auth.token.email_verified == true &&
+        (!('admin' in request.auth.token) || request.auth.token.admin == true);
+    }
+
+    function isAllowedExamType(t) {
+      return t in [
+        'Semester Final',
+        'Mid Term',
+        'Annual Examination',
+        'Unit Test',
+        'Mock / Entrance Test',
+        'Practical / Viva'
+      ];
+    }
+
+    function isInstitutionOwner(institutionId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/institutions/$(institutionId)) &&
+        get(/databases/$(database)/documents/institutions/$(institutionId)).data.ownerId == request.auth.uid;
+    }
+
+    function hasActiveSubscriptionDoc(institutionId, subId) {
+      return isValidId(subId) &&
+        exists(/databases/$(database)/documents/subscriptions/$(subId)) &&
+        get(/databases/$(database)/documents/subscriptions/$(subId)).data.institutionId == institutionId &&
+        get(/databases/$(database)/documents/subscriptions/$(subId)).data.ownerId == request.auth.uid &&
+        get(/databases/$(database)/documents/subscriptions/$(subId)).data.paymentStatus == 'approved' &&
+        get(/databases/$(database)/documents/subscriptions/$(subId)).data.approvalStatus == 'approved' &&
+        get(/databases/$(database)/documents/subscriptions/$(subId)).data.expiresAt > request.time;
+    }
+
+    function institutionHasActiveSubscription(institutionId) {
+      return exists(/databases/$(database)/documents/institutions/$(institutionId)) &&
+        ('activeSubscriptionId' in get(/databases/$(database)/documents/institutions/$(institutionId)).data) &&
+        get(/databases/$(database)/documents/institutions/$(institutionId)).data.activeSubscriptionId is string &&
+        hasActiveSubscriptionDoc(
+          institutionId,
+          get(/databases/$(database)/documents/institutions/$(institutionId)).data.activeSubscriptionId
+        );
+    }
+
+    function isExamOwner(institutionId, examId) {
+      return isInstitutionOwner(institutionId) &&
+        exists(/databases/$(database)/documents/institutions/$(institutionId)/exams/$(examId)) &&
+        get(/databases/$(database)/documents/institutions/$(institutionId)/exams/$(examId)).data.ownerId == request.auth.uid;
+    }
+
+    function isPaidActiveExamOwner(institutionId, examId) {
+      return isExamOwner(institutionId, examId);
+    }
+
+    // Validation Blueprints
+    function isValidUserProfile(data, uid) {
+      return data.keys().hasAll(['uid', 'fullName', 'email', 'institutionId', 'role', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'fullName', 'email', 'institutionId', 'role', 'createdAt', 'updatedAt']) &&
+        data.uid is string && data.uid == request.auth.uid && data.uid == uid && isValidId(data.uid) &&
+        data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 120 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.institutionId is string && isValidId(data.institutionId) &&
+        data.role == 'coordinator' &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidInstitution(data, institutionId) {
+      return data.keys().hasAll(['id', 'ownerId', 'name', 'type', 'address', 'city', 'state', 'pinCode', 'mobile', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly([
+          'id', 'ownerId', 'name', 'type', 'address', 'city', 'state', 'pinCode', 'mobile',
+          'logoDataUrl', 'activeSubscriptionId', 'pendingPaymentRequestId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id is string && data.id == institutionId && isValidId(data.id) &&
+        data.ownerId is string && isValidId(data.ownerId) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 180 &&
+        data.type in ['School', 'College', 'University', 'Coaching Institute', 'Examination Center', 'Other'] &&
+        data.address is string && data.address.size() >= 1 && data.address.size() <= 300 &&
+        data.city is string && data.city.size() >= 1 && data.city.size() <= 100 &&
+        data.state is string && data.state.size() >= 1 && data.state.size() <= 100 &&
+        data.pinCode is string && data.pinCode.size() >= 1 && data.pinCode.size() <= 20 &&
+        data.mobile is string && data.mobile.size() >= 1 && data.mobile.size() <= 30 &&
+        (!('logoDataUrl' in data) || (data.logoDataUrl is string && data.logoDataUrl.size() <= 300000)) &&
+        (!('activeSubscriptionId' in data) || data.activeSubscriptionId == null || isValidId(data.activeSubscriptionId)) &&
+        (!('pendingPaymentRequestId' in data) || data.pendingPaymentRequestId == null || isValidId(data.pendingPaymentRequestId)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidExam(data, institutionId, examId) {
+      return data.keys().hasAll([
+          'id', 'institutionId', 'ownerId', 'name', 'examType', 'academicYear', 'examDate',
+          'status', 'studentCount', 'classroomCount', 'totalBenches', 'totalCapacity',
+          'seatingMode', 'strategy', 'sortOrder', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'institutionId', 'ownerId', 'name', 'examType', 'academicYear', 'examDate',
+          'examTime', 'subject', 'classCourse', 'semester', 'notes', 'status',
+          'studentCount', 'classroomCount', 'totalBenches', 'totalCapacity',
+          'seatingMode', 'strategy', 'sortOrder', 'rollRangeStart', 'rollRangeEnd',
+          'latestPlanId', 'latestAuditStatus', 'subscriptionId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.id is string && data.id == examId && isValidId(data.id) &&
+        data.institutionId is string && data.institutionId == institutionId && isValidId(data.institutionId) &&
+        data.ownerId is string && data.ownerId == request.auth.uid &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 200 &&
+        data.examType is string && data.examType.size() >= 1 && data.examType.size() <= 80 &&
+        data.academicYear is string && data.academicYear.size() >= 1 && data.academicYear.size() <= 40 &&
+        data.examDate is string && data.examDate.size() >= 1 && data.examDate.size() <= 40 &&
+        (!('examTime' in data) || (data.examTime is string && data.examTime.size() <= 40)) &&
+        (!('subject' in data) || (data.subject is string && data.subject.size() <= 160)) &&
+        (!('classCourse' in data) || (data.classCourse is string && data.classCourse.size() <= 120)) &&
+        (!('semester' in data) || (data.semester is string && data.semester.size() <= 60)) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000)) &&
+        data.status in ['draft', 'generated', 'verified', 'archived'] &&
+        data.studentCount is int && data.studentCount >= 0 && data.studentCount <= 100000 &&
+        data.classroomCount is int && data.classroomCount >= 0 && data.classroomCount <= 1000 &&
+        data.totalBenches is int && data.totalBenches >= 0 && data.totalBenches <= 100000 &&
+        data.totalCapacity is int && data.totalCapacity >= 0 && data.totalCapacity <= 200000 &&
+        data.seatingMode in [1, 2] &&
+        data.strategy in ['sequential', 'alternate', 'section_separation', 'custom'] &&
+        data.sortOrder in ['original', 'ascending', 'custom'] &&
+        (!('rollRangeStart' in data) || (data.rollRangeStart is string && data.rollRangeStart.size() <= 64)) &&
+        (!('rollRangeEnd' in data) || (data.rollRangeEnd is string && data.rollRangeEnd.size() <= 64)) &&
+        (!('latestPlanId' in data) || (data.latestPlanId is string && data.latestPlanId.size() <= 128)) &&
+        (!('latestAuditStatus' in data) || data.latestAuditStatus in ['VERIFIED', 'FAILED', 'PENDING']) &&
+        (!('subscriptionId' in data) || (data.subscriptionId is string && isValidId(data.subscriptionId))) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidStudent(data, studentId) {
+      return data.keys().hasAll(['id', 'ownerId', 'rollNumber', 'originalIndex', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'ownerId', 'rollNumber', 'name', 'className', 'course', 'section', 'subject', 'originalIndex', 'createdAt']) &&
+        data.id is string && data.id == studentId && isValidId(data.id) &&
+        data.ownerId is string && data.ownerId == request.auth.uid &&
+        data.rollNumber is string && data.rollNumber.size() >= 1 && data.rollNumber.size() <= 64 &&
+        (!('name' in data) || (data.name is string && data.name.size() <= 160)) &&
+        (!('className' in data) || (data.className is string && data.className.size() <= 80)) &&
+        (!('course' in data) || (data.course is string && data.course.size() <= 120)) &&
+        (!('section' in data) || (data.section is string && data.section.size() <= 40)) &&
+        (!('subject' in data) || (data.subject is string && data.subject.size() <= 120)) &&
+        data.originalIndex is int && data.originalIndex >= 0 && data.originalIndex <= 100000 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidClassroom(data, classroomId) {
+      return data.keys().hasAll(['id', 'ownerId', 'name', 'roomNumber', 'rows', 'benchesPerRow', 'disabled', 'orderIndex', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'ownerId', 'name', 'roomNumber', 'building', 'floor', 'rows', 'benchesPerRow', 'rowBenchCounts', 'disabledBenches', 'disabled', 'notes', 'orderIndex', 'createdAt']) &&
+        data.id is string && data.id == classroomId && isValidId(data.id) &&
+        data.ownerId is string && data.ownerId == request.auth.uid &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        data.roomNumber is string && data.roomNumber.size() >= 1 && data.roomNumber.size() <= 60 &&
+        (!('building' in data) || (data.building is string && data.building.size() <= 100)) &&
+        (!('floor' in data) || (data.floor is string && data.floor.size() <= 40)) &&
+        data.rows is int && data.rows >= 1 && data.rows <= 100 &&
+        data.benchesPerRow is int && data.benchesPerRow >= 1 && data.benchesPerRow <= 100 &&
+        (!('rowBenchCounts' in data) || (data.rowBenchCounts is list && data.rowBenchCounts.size() <= 100 && (data.rowBenchCounts.size() == 0 || data.rowBenchCounts[0] is int))) &&
+        (!('disabledBenches' in data) || (data.disabledBenches is list && data.disabledBenches.size() <= 500 && (data.disabledBenches.size() == 0 || data.disabledBenches[0] is string))) &&
+        data.disabled is bool &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 500)) &&
+        data.orderIndex is int && data.orderIndex >= 0 && data.orderIndex <= 1000 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidSeatingPlan(data, institutionId, examId, planId) {
+      return data.keys().hasAll([
+          'id', 'examId', 'institutionId', 'ownerId', 'version', 'seatingMode',
+          'strategy', 'sortOrder', 'totalStudents', 'allocatedStudents',
+          'unallocatedStudents', 'totalBenches', 'totalCapacity', 'unusedSeats',
+          'auditStatus', 'auditReport', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'examId', 'institutionId', 'ownerId', 'version', 'seatingMode',
+          'strategy', 'sortOrder', 'totalStudents', 'allocatedStudents',
+          'unallocatedStudents', 'totalBenches', 'totalCapacity', 'unusedSeats',
+          'auditStatus', 'auditReport', 'aiSummary', 'createdAt'
+        ]) &&
+        data.id is string && data.id == planId && isValidId(data.id) &&
+        data.examId is string && data.examId == examId &&
+        data.institutionId is string && data.institutionId == institutionId &&
+        data.ownerId is string && data.ownerId == request.auth.uid &&
+        data.version is int && data.version >= 1 && data.version <= 10000 &&
+        data.seatingMode in [1, 2] &&
+        data.strategy in ['sequential', 'alternate', 'section_separation', 'custom'] &&
+        data.sortOrder in ['original', 'ascending', 'custom'] &&
+        data.totalStudents is int && data.totalStudents >= 0 &&
+        data.allocatedStudents is int && data.allocatedStudents >= 0 &&
+        data.unallocatedStudents is int && data.unallocatedStudents >= 0 &&
+        data.totalBenches is int && data.totalBenches >= 0 &&
+        data.totalCapacity is int && data.totalCapacity >= 0 &&
+        data.unusedSeats is int && data.unusedSeats >= 0 &&
+        data.auditStatus in ['VERIFIED', 'FAILED'] &&
+        data.auditReport is map &&
+        (!('aiSummary' in data) || (data.aiSummary is string && data.aiSummary.size() <= 4000)) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidRoomAllocation(data, roomId) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'classroomId', 'classroomName', 'roomNumber',
+          'orderIndex', 'totalBenches', 'activeBenches', 'capacity',
+          'allocatedCount', 'unusedSeats', 'rows', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'ownerId', 'classroomId', 'classroomName', 'roomNumber',
+          'building', 'floor', 'orderIndex', 'totalBenches', 'activeBenches',
+          'capacity', 'allocatedCount', 'unusedSeats', 'rows', 'createdAt'
+        ]) &&
+        data.id is string && data.id == roomId && isValidId(data.id) &&
+        data.ownerId is string && data.ownerId == request.auth.uid &&
+        data.classroomId is string && data.classroomId.size() >= 1 && data.classroomId.size() <= 128 &&
+        data.classroomName is string && data.classroomName.size() >= 1 && data.classroomName.size() <= 120 &&
+        data.roomNumber is string && data.roomNumber.size() >= 1 && data.roomNumber.size() <= 60 &&
+        (!('building' in data) || (data.building is string && data.building.size() <= 100)) &&
+        (!('floor' in data) || (data.floor is string && data.floor.size() <= 40)) &&
+        data.orderIndex is int && data.orderIndex >= 0 &&
+        data.totalBenches is int && data.totalBenches >= 0 &&
+        data.activeBenches is int && data.activeBenches >= 0 &&
+        data.capacity is int && data.capacity >= 0 &&
+        data.allocatedCount is int && data.allocatedCount >= 0 &&
+        data.unusedSeats is int && data.unusedSeats >= 0 &&
+        data.rows is list && data.rows.size() <= 100 && (data.rows.size() == 0 || data.rows[0] is map) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidAuditLog(data, logId) {
+      return data.keys().hasAll(['id', 'ownerId', 'action', 'entityType', 'entityId', 'summary', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'ownerId', 'action', 'entityType', 'entityId', 'summary', 'createdAt']) &&
+        data.id is string && data.id == logId && isValidId(data.id) &&
+        data.ownerId is string && data.ownerId == request.auth.uid &&
+        data.action is string && data.action.size() >= 1 && data.action.size() <= 100 &&
+        data.entityType is string && data.entityType.size() >= 1 && data.entityType.size() <= 60 &&
+        data.entityId is string && data.entityId.size() >= 1 && data.entityId.size() <= 128 &&
+        data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 500 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidPaymentRequest(data, paymentRequestId) {
+      return data.keys().hasAll([
+          'paymentRequestId', 'institutionId', 'institutionName', 'userId', 'userEmail',
+          'amount', 'upiId', 'screenshotStoragePath', 'status', 'submittedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'paymentRequestId', 'institutionId', 'institutionName', 'userId', 'userEmail',
+          'amount', 'upiId', 'transactionReferenceId', 'screenshotStoragePath',
+          'screenshotFileName', 'screenshotMimeType', 'status', 'submittedAt',
+          'reviewedAt', 'reviewedBy', 'rejectionReason', 'subscriptionId'
+        ]) &&
+        data.paymentRequestId is string && data.paymentRequestId == paymentRequestId && isValidId(data.paymentRequestId) &&
+        data.institutionId is string && isValidId(data.institutionId) &&
+        data.institutionName is string && data.institutionName.size() >= 1 && data.institutionName.size() <= 180 &&
+        data.userId is string && isValidId(data.userId) &&
+        data.userEmail is string && data.userEmail.size() >= 3 && data.userEmail.size() <= 160 &&
+        data.amount is int && data.amount == 1 &&
+        data.upiId is string && data.upiId == 'BHARATPE2N0Y0H9Z0B84598@unitype' &&
+        (!('transactionReferenceId' in data) || data.transactionReferenceId == null || (data.transactionReferenceId is string && data.transactionReferenceId.size() <= 120)) &&
+        data.screenshotStoragePath is string &&
+        data.screenshotStoragePath.size() >= 10 &&
+        data.screenshotStoragePath.size() <= 500 &&
+        data.screenshotStoragePath.split('/').size() == 4 &&
+        data.screenshotStoragePath.split('/')[0] == 'paymentProofs' &&
+        data.screenshotStoragePath.split('/')[1] == data.institutionId &&
+        data.screenshotStoragePath.split('/')[2] == data.userId &&
+        data.screenshotStoragePath.split('/')[3].size() >= 1 &&
+        (!('screenshotFileName' in data) || (data.screenshotFileName is string && data.screenshotFileName.size() <= 200)) &&
+        (!('screenshotMimeType' in data) || (data.screenshotMimeType is string && data.screenshotMimeType.size() <= 80)) &&
+        data.status in ['pending', 'approved', 'rejected'] &&
+        data.submittedAt is timestamp &&
+        (!('reviewedAt' in data) || data.reviewedAt == null || data.reviewedAt is timestamp) &&
+        (!('reviewedBy' in data) || data.reviewedBy == null || (data.reviewedBy is string && data.reviewedBy.size() <= 160)) &&
+        (!('rejectionReason' in data) || data.rejectionReason == null || (data.rejectionReason is string && data.rejectionReason.size() <= 500)) &&
+        (!('subscriptionId' in data) || data.subscriptionId == null || isValidId(data.subscriptionId));
+    }
+
+    function isValidPaymentProofFile(data, paymentRequestId) {
+      return data.keys().hasAll([
+          'paymentRequestId', 'institutionId', 'userId', 'fileName',
+          'mimeType', 'byteSize', 'chunkCount', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'paymentRequestId', 'institutionId', 'userId', 'fileName',
+          'mimeType', 'byteSize', 'chunkCount', 'createdAt'
+        ]) &&
+        data.paymentRequestId is string && data.paymentRequestId == paymentRequestId && isValidId(data.paymentRequestId) &&
+        data.institutionId is string && isValidId(data.institutionId) &&
+        data.userId is string && isValidId(data.userId) &&
+        data.fileName is string && data.fileName.size() >= 1 && data.fileName.size() <= 200 &&
+        data.mimeType in ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'] &&
+        data.byteSize is int && data.byteSize > 0 && data.byteSize <= 5 * 1024 * 1024 &&
+        data.chunkCount is int && data.chunkCount >= 1 && data.chunkCount <= 24 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidPaymentProofChunk(data, chunkId) {
+      return data.keys().hasAll(['index', 'ownerId', 'institutionId', 'data', 'createdAt']) &&
+        data.keys().hasOnly(['index', 'ownerId', 'institutionId', 'data', 'createdAt']) &&
+        data.index is int && data.index >= 0 && data.index < 24 &&
+        string(data.index) == chunkId &&
+        data.ownerId is string && isValidId(data.ownerId) &&
+        data.institutionId is string && isValidId(data.institutionId) &&
+        data.data is string && data.data.size() >= 1 && data.data.size() <= 600000 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidSubscription(data, subscriptionId) {
+      return data.keys().hasAll([
+          'subscriptionId', 'institutionId', 'institutionName', 'ownerId', 'userEmail',
+          'paymentRequestId', 'planName', 'amount', 'paymentStatus', 'approvalStatus',
+          'activatedAt', 'expiresAt', 'examinationTypeLocked', 'approvedBy', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'subscriptionId', 'institutionId', 'institutionName', 'ownerId', 'userEmail',
+          'paymentRequestId', 'planName', 'amount', 'paymentStatus', 'approvalStatus',
+          'activatedAt', 'expiresAt', 'examinationTypeLocked', 'lockedExaminationType',
+          'firstExaminationCreatedAt', 'firstExamId', 'approvedBy',
+          'revokedAt', 'revokedBy', 'revocationReason', 'createdAt', 'updatedAt'
+        ]) &&
+        data.subscriptionId is string && data.subscriptionId == subscriptionId && isValidId(data.subscriptionId) &&
+        data.institutionId is string && isValidId(data.institutionId) &&
+        data.institutionName is string && data.institutionName.size() >= 1 && data.institutionName.size() <= 180 &&
+        data.ownerId is string && isValidId(data.ownerId) &&
+        data.userEmail is string && data.userEmail.size() >= 3 && data.userEmail.size() <= 160 &&
+        data.paymentRequestId is string && isValidId(data.paymentRequestId) &&
+        data.planName is string && data.planName == 'Exam Planner Access' &&
+        data.amount is int && data.amount == 1 &&
+        data.paymentStatus in ['approved', 'revoked'] &&
+        data.approvalStatus in ['approved', 'expired', 'revoked'] &&
+        data.activatedAt is timestamp &&
+        data.expiresAt is timestamp &&
+        data.examinationTypeLocked is bool &&
+        (!('lockedExaminationType' in data) || data.lockedExaminationType == null || isAllowedExamType(data.lockedExaminationType)) &&
+        (!('firstExaminationCreatedAt' in data) || data.firstExaminationCreatedAt == null || data.firstExaminationCreatedAt is timestamp) &&
+        (!('firstExamId' in data) || data.firstExamId == null || isValidId(data.firstExamId)) &&
+        data.approvedBy is string && data.approvedBy.size() >= 3 && data.approvedBy.size() <= 160 &&
+        (!('revokedAt' in data) || data.revokedAt == null || data.revokedAt is timestamp) &&
+        (!('revokedBy' in data) || data.revokedBy == null || (data.revokedBy is string && data.revokedBy.size() <= 160)) &&
+        (!('revocationReason' in data) || data.revocationReason == null || (data.revocationReason is string && data.revocationReason.size() <= 500)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidNotification(data, institutionId, notificationId) {
+      return data.keys().hasAll(['id', 'institutionId', 'ownerId', 'type', 'title', 'message', 'read', 'relatedId', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'institutionId', 'ownerId', 'type', 'title', 'message', 'read', 'relatedId', 'createdAt']) &&
+        data.id is string && data.id == notificationId && isValidId(data.id) &&
+        data.institutionId is string && data.institutionId == institutionId && isValidId(data.institutionId) &&
+        data.ownerId is string && isValidId(data.ownerId) &&
+        data.type in ['payment_approved', 'payment_rejected', 'subscription_revoked', 'subscription_expired'] &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+        data.message is string && data.message.size() >= 1 && data.message.size() <= 600 &&
+        data.read is bool &&
+        data.relatedId is string && data.relatedId.size() >= 1 && data.relatedId.size() <= 128 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidAdminAuditLog(data, logId) {
+      return data.keys().hasAll(['id', 'adminUid', 'adminEmail', 'action', 'targetType', 'targetId', 'institutionId', 'summary', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'adminUid', 'adminEmail', 'action', 'targetType', 'targetId', 'institutionId', 'summary', 'reason', 'createdAt']) &&
+        data.id is string && data.id == logId && isValidId(data.id) &&
+        data.adminUid is string && data.adminUid == request.auth.uid && isValidId(data.adminUid) &&
+        data.adminEmail is string && data.adminEmail == request.auth.token.email && data.adminEmail.size() <= 160 &&
+        data.action in ['PAYMENT_APPROVED', 'PAYMENT_REJECTED', 'SUBSCRIPTION_REVOKED'] &&
+        data.targetType in ['paymentRequest', 'subscription'] &&
+        data.targetId is string && isValidId(data.targetId) &&
+        data.institutionId is string && isValidId(data.institutionId) &&
+        data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 500 &&
+        (!('reason' in data) || data.reason == null || (data.reason is string && data.reason.size() <= 500)) &&
+        data.createdAt is timestamp;
+    }
+
+    // Users Collection (PII isolated to owner)
+    match /users/{uid} {
+      allow get: if isValidId(uid) && isOwnerUid(uid);
+      allow list: if false;
+      allow create: if isValidId(uid) &&
+        isOwnerUid(uid) &&
+        isValidUserProfile(incoming(), uid) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(uid) &&
+        isOwnerUid(uid) &&
+        isValidUserProfile(incoming(), uid) &&
+        incoming().uid == existing().uid &&
+        incoming().institutionId == existing().institutionId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'email', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // Institutions Collection (Strict Tenant Isolation + Admin Oversight)
+    match /institutions/{institutionId} {
+      allow get: if isValidId(institutionId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow create: if isValidId(institutionId) &&
+        isSignedIn() &&
+        isValidInstitution(incoming(), institutionId) &&
+        incoming().ownerId == request.auth.uid &&
+        !('activeSubscriptionId' in incoming()) &&
+        !('pendingPaymentRequestId' in incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(institutionId) &&
+        isSignedIn() &&
+        isValidInstitution(incoming(), institutionId) &&
+        incoming().id == existing().id &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          // Tier 1: Admin updating subscription / pending request pointers
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['activeSubscriptionId', 'pendingPaymentRequestId', 'updatedAt'])) ||
+          // Tier 2a: Owner updating institution profile details
+          (existing().ownerId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'type', 'address', 'city', 'state', 'pinCode', 'mobile', 'logoDataUrl', 'updatedAt'
+            ])) ||
+          // Tier 2b: Owner atomically linking a new pending payment request
+          (existing().ownerId == request.auth.uid &&
+            (!('pendingPaymentRequestId' in existing()) || existing().pendingPaymentRequestId == null) &&
+            incoming().pendingPaymentRequestId is string &&
+            isValidId(incoming().pendingPaymentRequestId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['pendingPaymentRequestId', 'updatedAt']) &&
+            existsAfter(/databases/$(database)/documents/paymentRequests/$(incoming().pendingPaymentRequestId)) &&
+            getAfter(/databases/$(database)/documents/paymentRequests/$(incoming().pendingPaymentRequestId)).data.institutionId == institutionId &&
+            getAfter(/databases/$(database)/documents/paymentRequests/$(incoming().pendingPaymentRequestId)).data.userId == request.auth.uid &&
+            getAfter(/databases/$(database)/documents/paymentRequests/$(incoming().pendingPaymentRequestId)).data.status == 'pending')
+        );
+      allow delete: if false;
+
+      // Exams Subcollection (Subscription-gated writes & immutable exam type locking)
+      match /exams/{examId} {
+        allow get: if isValidId(institutionId) && isValidId(examId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isValidId(institutionId) &&
+          isValidId(examId) &&
+          isSignedIn() &&
+          isValidExam(incoming(), institutionId, examId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          isInstitutionOwner(institutionId) &&
+          isAllowedExamType(incoming().examType) &&
+          ('subscriptionId' in incoming()) &&
+          isValidId(incoming().subscriptionId);
+        allow update: if isValidId(institutionId) &&
+          isValidId(examId) &&
+          isSignedIn() &&
+          isValidExam(incoming(), institutionId, examId) &&
+          existing().ownerId == request.auth.uid &&
+          incoming().id == existing().id &&
+          incoming().institutionId == existing().institutionId &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().examType == existing().examType &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          isInstitutionOwner(institutionId) &&
+          (
+            // Action: Unarchive an archived exam
+            (existing().status == 'archived' &&
+              incoming().status in ['draft', 'generated', 'verified'] &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+            // Action: Edit non-archived exam or update generated plan linkage (examType remains locked/immutable)
+            (existing().status != 'archived' &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'name', 'academicYear', 'examDate', 'examTime', 'subject',
+                'classCourse', 'semester', 'notes', 'status', 'studentCount',
+                'classroomCount', 'totalBenches', 'totalCapacity', 'seatingMode',
+                'strategy', 'sortOrder', 'rollRangeStart', 'rollRangeEnd',
+                'latestPlanId', 'latestAuditStatus', 'updatedAt'
+              ]))
+          );
+        allow delete: if isValidId(institutionId) && isValidId(examId) && isSignedIn() && existing().ownerId == request.auth.uid && isInstitutionOwner(institutionId);
+
+        // Students Subcollection
+        match /students/{studentId} {
+          allow get: if isValidId(institutionId) && isValidId(examId) && isValidId(studentId) && isSignedIn() && existing().ownerId == request.auth.uid;
+          allow list: if isSignedIn() && existing().ownerId == request.auth.uid;
+          allow create: if isValidId(institutionId) &&
+            isValidId(examId) &&
+            isValidId(studentId) &&
+            isSignedIn() &&
+            isValidStudent(incoming(), studentId) &&
+            incoming().createdAt == request.time &&
+            isPaidActiveExamOwner(institutionId, examId);
+          allow update: if isValidId(institutionId) &&
+            isValidId(examId) &&
+            isValidId(studentId) &&
+            isSignedIn() &&
+            isValidStudent(incoming(), studentId) &&
+            existing().ownerId == request.auth.uid &&
+            incoming().id == existing().id &&
+            incoming().ownerId == existing().ownerId &&
+            incoming().createdAt == existing().createdAt &&
+            isPaidActiveExamOwner(institutionId, examId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['rollNumber', 'name', 'className', 'course', 'section', 'subject', 'originalIndex']);
+          allow delete: if isValidId(institutionId) && isValidId(examId) && isValidId(studentId) && isSignedIn() && existing().ownerId == request.auth.uid && isPaidActiveExamOwner(institutionId, examId);
+        }
+
+        // Classrooms Subcollection
+        match /classrooms/{classroomId} {
+          allow get: if isValidId(institutionId) && isValidId(examId) && isValidId(classroomId) && isSignedIn() && existing().ownerId == request.auth.uid;
+          allow list: if isSignedIn() && existing().ownerId == request.auth.uid;
+          allow create: if isValidId(institutionId) &&
+            isValidId(examId) &&
+            isValidId(classroomId) &&
+            isSignedIn() &&
+            isValidClassroom(incoming(), classroomId) &&
+            incoming().createdAt == request.time &&
+            isPaidActiveExamOwner(institutionId, examId);
+          allow update: if isValidId(institutionId) &&
+            isValidId(examId) &&
+            isValidId(classroomId) &&
+            isSignedIn() &&
+            isValidClassroom(incoming(), classroomId) &&
+            existing().ownerId == request.auth.uid &&
+            incoming().id == existing().id &&
+            incoming().ownerId == existing().ownerId &&
+            incoming().createdAt == existing().createdAt &&
+            isPaidActiveExamOwner(institutionId, examId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'roomNumber', 'building', 'floor', 'rows', 'benchesPerRow',
+              'rowBenchCounts', 'disabledBenches', 'disabled', 'notes', 'orderIndex'
+            ]);
+          allow delete: if isValidId(institutionId) && isValidId(examId) && isValidId(classroomId) && isSignedIn() && existing().ownerId == request.auth.uid && isPaidActiveExamOwner(institutionId, examId);
+        }
+
+        // Seating Plans Subcollection (Versioned History - immutable once created)
+        match /seatingPlans/{planId} {
+          allow get: if isValidId(institutionId) && isValidId(examId) && isValidId(planId) && isSignedIn() && existing().ownerId == request.auth.uid;
+          allow list: if isSignedIn() && existing().ownerId == request.auth.uid;
+          allow create: if isValidId(institutionId) &&
+            isValidId(examId) &&
+            isValidId(planId) &&
+            isSignedIn() &&
+            isValidSeatingPlan(incoming(), institutionId, examId, planId) &&
+            incoming().createdAt == request.time &&
+            isPaidActiveExamOwner(institutionId, examId);
+          allow update: if false;
+          allow delete: if isValidId(institutionId) && isValidId(examId) && isValidId(planId) && isSignedIn() && existing().ownerId == request.auth.uid && isPaidActiveExamOwner(institutionId, examId);
+
+          // Per-Classroom Allocations inside a Plan Version
+          match /roomAllocations/{roomId} {
+            allow get: if isValidId(institutionId) && isValidId(examId) && isValidId(planId) && isValidId(roomId) && isSignedIn() && existing().ownerId == request.auth.uid;
+            allow list: if isSignedIn() && existing().ownerId == request.auth.uid;
+            allow create: if isValidId(institutionId) &&
+              isValidId(examId) &&
+              isValidId(planId) &&
+              isValidId(roomId) &&
+              isSignedIn() &&
+              isValidRoomAllocation(incoming(), roomId) &&
+              incoming().createdAt == request.time &&
+              isPaidActiveExamOwner(institutionId, examId);
+            allow update: if false;
+            allow delete: if isValidId(institutionId) && isValidId(examId) && isValidId(planId) && isValidId(roomId) && isSignedIn() && existing().ownerId == request.auth.uid && isPaidActiveExamOwner(institutionId, examId);
+          }
+        }
+      }
+
+      // Immutable Institution Audit Logs
+      match /auditLogs/{logId} {
+        allow get: if isValidId(institutionId) && isValidId(logId) && isSignedIn() && existing().ownerId == request.auth.uid;
+        allow list: if isSignedIn() && existing().ownerId == request.auth.uid;
+        allow create: if isValidId(institutionId) &&
+          isValidId(logId) &&
+          isSignedIn() &&
+          isValidAuditLog(incoming(), logId) &&
+          incoming().createdAt == request.time &&
+          isInstitutionOwner(institutionId);
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      // Subscription & Payment Notifications
+      match /notifications/{notificationId} {
+        allow get: if isValidId(institutionId) && isValidId(notificationId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isValidId(institutionId) &&
+          isValidId(notificationId) &&
+          isAdmin() &&
+          isValidNotification(incoming(), institutionId, notificationId) &&
+          incoming().createdAt == request.time;
+        allow update: if isValidId(institutionId) &&
+          isValidId(notificationId) &&
+          isSignedIn() &&
+          existing().ownerId == request.auth.uid &&
+          isValidNotification(incoming(), institutionId, notificationId) &&
+          incoming().id == existing().id &&
+          incoming().institutionId == existing().institutionId &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().type == existing().type &&
+          incoming().title == existing().title &&
+          incoming().message == existing().message &&
+          incoming().relatedId == existing().relatedId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().read == true &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+        allow delete: if false;
+      }
+    }
+
+    // Manual UPI Payment Requests
+    match /paymentRequests/{paymentRequestId} {
+      allow get: if isValidId(paymentRequestId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow create: if isValidId(paymentRequestId) &&
+        isSignedIn() &&
+        isValidPaymentRequest(incoming(), paymentRequestId) &&
+        incoming().userId == request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().submittedAt == request.time &&
+        (!('reviewedAt' in incoming()) || incoming().reviewedAt == null) &&
+        (!('reviewedBy' in incoming()) || incoming().reviewedBy == null) &&
+        (!('rejectionReason' in incoming()) || incoming().rejectionReason == null) &&
+        (!('subscriptionId' in incoming()) || incoming().subscriptionId == null) &&
+        isInstitutionOwner(incoming().institutionId) &&
+        !institutionHasActiveSubscription(incoming().institutionId) &&
+        (!('pendingPaymentRequestId' in get(/databases/$(database)/documents/institutions/$(incoming().institutionId)).data) ||
+          get(/databases/$(database)/documents/institutions/$(incoming().institutionId)).data.pendingPaymentRequestId == null) &&
+        getAfter(/databases/$(database)/documents/institutions/$(incoming().institutionId)).data.pendingPaymentRequestId == paymentRequestId;
+      allow update: if isValidId(paymentRequestId) &&
+        isAdmin() &&
+        isValidPaymentRequest(incoming(), paymentRequestId) &&
+        existing().status == 'pending' &&
+        incoming().paymentRequestId == existing().paymentRequestId &&
+        incoming().institutionId == existing().institutionId &&
+        incoming().institutionName == existing().institutionName &&
+        incoming().userId == existing().userId &&
+        incoming().userEmail == existing().userEmail &&
+        incoming().amount == existing().amount &&
+        incoming().upiId == existing().upiId &&
+        ((!('transactionReferenceId' in incoming()) && !('transactionReferenceId' in existing())) ||
+          ('transactionReferenceId' in incoming() && 'transactionReferenceId' in existing() &&
+            incoming().transactionReferenceId == existing().transactionReferenceId)) &&
+        incoming().screenshotStoragePath == existing().screenshotStoragePath &&
+        incoming().submittedAt == existing().submittedAt &&
+        incoming().reviewedAt == request.time &&
+        incoming().reviewedBy == request.auth.token.email &&
+        (
+          (incoming().status == 'approved' &&
+            incoming().subscriptionId is string &&
+            isValidId(incoming().subscriptionId) &&
+            (!('rejectionReason' in incoming()) || incoming().rejectionReason == null) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedBy', 'subscriptionId']) &&
+            existsAfter(/databases/$(database)/documents/subscriptions/$(incoming().subscriptionId)) &&
+            getAfter(/databases/$(database)/documents/subscriptions/$(incoming().subscriptionId)).data.paymentRequestId == paymentRequestId) ||
+          (incoming().status == 'rejected' &&
+            incoming().rejectionReason is string &&
+            incoming().rejectionReason.size() >= 3 &&
+            incoming().rejectionReason.size() <= 500 &&
+            (!('subscriptionId' in incoming()) || incoming().subscriptionId == null) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedBy', 'rejectionReason']))
+        );
+      allow delete: if false;
+    }
+
+    // Private Payment Proof Files (Firestore-backed fallback for Starter Tier when Cloud Storage is unavailable)
+    match /paymentProofFiles/{paymentRequestId} {
+      allow get: if isValidId(paymentRequestId) && isSignedIn() && (resource == null || existing().userId == request.auth.uid || isAdmin());
+      allow list: if false;
+      allow create: if isValidId(paymentRequestId) &&
+        isSignedIn() &&
+        isValidPaymentProofFile(incoming(), paymentRequestId) &&
+        incoming().userId == request.auth.uid &&
+        isInstitutionOwner(incoming().institutionId) &&
+        incoming().createdAt == request.time;
+      allow update, delete: if false;
+
+      match /chunks/{chunkId} {
+        allow get: if isValidId(paymentRequestId) && chunkId.matches('^[0-9]{1,2}$') && isSignedIn() && (resource == null || existing().ownerId == request.auth.uid || isAdmin());
+        allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+        allow create: if isValidId(paymentRequestId) &&
+          chunkId.matches('^[0-9]{1,2}$') &&
+          isSignedIn() &&
+          isValidPaymentProofChunk(incoming(), chunkId) &&
+          incoming().ownerId == request.auth.uid &&
+          exists(/databases/$(database)/documents/paymentProofFiles/$(paymentRequestId)) &&
+          get(/databases/$(database)/documents/paymentProofFiles/$(paymentRequestId)).data.userId == request.auth.uid &&
+          get(/databases/$(database)/documents/paymentProofFiles/$(paymentRequestId)).data.institutionId == incoming().institutionId &&
+          isInstitutionOwner(incoming().institutionId) &&
+          incoming().createdAt == request.time;
+        allow update, delete: if false;
+      }
+    }
+
+    // Subscriptions (15-day access + immutable first-used examination type lock)
+    match /subscriptions/{subscriptionId} {
+      allow get: if isValidId(subscriptionId) && isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+      allow create: if isValidId(subscriptionId) &&
+        isAdmin() &&
+        isValidSubscription(incoming(), subscriptionId) &&
+        incoming().paymentStatus == 'approved' &&
+        incoming().approvalStatus == 'approved' &&
+        incoming().examinationTypeLocked == false &&
+        (!('lockedExaminationType' in incoming()) || incoming().lockedExaminationType == null) &&
+        (!('firstExaminationCreatedAt' in incoming()) || incoming().firstExaminationCreatedAt == null) &&
+        (!('firstExamId' in incoming()) || incoming().firstExamId == null) &&
+        (!('revokedAt' in incoming()) || incoming().revokedAt == null) &&
+        (!('revokedBy' in incoming()) || incoming().revokedBy == null) &&
+        (!('revocationReason' in incoming()) || incoming().revocationReason == null) &&
+        incoming().approvedBy == request.auth.token.email &&
+        incoming().activatedAt == request.time &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        incoming().expiresAt >= request.time + duration.value(15, 'd') - duration.value(5, 'm') &&
+        incoming().expiresAt <= request.time + duration.value(15, 'd') + duration.value(5, 'm') &&
+        exists(/databases/$(database)/documents/paymentRequests/$(incoming().paymentRequestId)) &&
+        get(/databases/$(database)/documents/paymentRequests/$(incoming().paymentRequestId)).data.status == 'pending' &&
+        getAfter(/databases/$(database)/documents/paymentRequests/$(incoming().paymentRequestId)).data.status == 'approved' &&
+        getAfter(/databases/$(database)/documents/paymentRequests/$(incoming().paymentRequestId)).data.subscriptionId == subscriptionId;
+      allow update: if isValidId(subscriptionId) &&
+        isSignedIn() &&
+        isValidSubscription(incoming(), subscriptionId) &&
+        incoming().subscriptionId == existing().subscriptionId &&
+        incoming().institutionId == existing().institutionId &&
+        incoming().institutionName == existing().institutionName &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().userEmail == existing().userEmail &&
+        incoming().paymentRequestId == existing().paymentRequestId &&
+        incoming().planName == existing().planName &&
+        incoming().amount == existing().amount &&
+        incoming().activatedAt == existing().activatedAt &&
+        incoming().expiresAt == existing().expiresAt &&
+        incoming().approvedBy == existing().approvedBy &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          // Action 1 (Admin): Revoke an active subscription with reason
+          (isAdmin() &&
+            existing().approvalStatus == 'approved' &&
+            incoming().approvalStatus == 'revoked' &&
+            incoming().paymentStatus == 'revoked' &&
+            incoming().revokedAt == request.time &&
+            incoming().revokedBy == request.auth.token.email &&
+            incoming().revocationReason is string &&
+            incoming().revocationReason.size() >= 3 &&
+            incoming().revocationReason.size() <= 500 &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'approvalStatus', 'paymentStatus', 'revokedAt', 'revokedBy', 'revocationReason', 'updatedAt'
+            ])) ||
+          // Action 2 (Owner, Atomic with First Exam Creation): Lock the chosen examination type permanently
+          (existing().ownerId == request.auth.uid &&
+            existing().paymentStatus == 'approved' &&
+            existing().approvalStatus == 'approved' &&
+            existing().expiresAt > request.time &&
+            existing().examinationTypeLocked == false &&
+            incoming().examinationTypeLocked == true &&
+            isAllowedExamType(incoming().lockedExaminationType) &&
+            incoming().firstExamId is string && isValidId(incoming().firstExamId) &&
+            incoming().firstExaminationCreatedAt == request.time &&
+            incoming().paymentStatus == existing().paymentStatus &&
+            incoming().approvalStatus == existing().approvalStatus &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'examinationTypeLocked', 'lockedExaminationType', 'firstExaminationCreatedAt', 'firstExamId', 'updatedAt'
+            ]) &&
+            existsAfter(/databases/$(database)/documents/institutions/$(existing().institutionId)/exams/$(incoming().firstExamId)) &&
+            getAfter(/databases/$(database)/documents/institutions/$(existing().institutionId)/exams/$(incoming().firstExamId)).data.examType == incoming().lockedExaminationType &&
+            getAfter(/databases/$(database)/documents/institutions/$(existing().institutionId)/exams/$(incoming().firstExamId)).data.subscriptionId == subscriptionId)
+        );
+      allow delete: if false;
+    }
+
+    // Admin Audit Logs (Immutable, Admin-Only)
+    match /adminAuditLogs/{logId} {
+      allow get: if isValidId(logId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(logId) &&
+        isAdmin() &&
+        isValidAdminAuditLog(incoming(), logId) &&
+        incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}

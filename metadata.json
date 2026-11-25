@@ -1,0 +1,6 @@
+{
+  "name": "EXAM PLANNER",
+  "description": "Smart Examination Seating. Zero Manual Allocation. AI-assisted examination seating and management platform for schools, colleges, and universities.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
