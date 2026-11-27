@@ -201,7 +201,7 @@ export function SubscribePage() {
     const hasUploadedProof = Boolean(currentAttempt?.screenshotStoragePath);
 
     if (!proofFile && !hasUploadedProof) {
-      setSubmitError('Please upload a payment screenshot or PDF receipt of your ₹1 UPI payment.');
+      setSubmitError(`Please upload a payment screenshot or PDF receipt of your ₹${SUBSCRIPTION_PLAN.amount} UPI payment.`);
       return;
     }
 
@@ -405,11 +405,11 @@ export function SubscribePage() {
           <AlertCircle className="w-5 h-5 text-red-700 shrink-0 mt-0.5" />
           <div className="text-sm text-red-950 space-y-1">
             <div className="font-semibold">
-              Your subscription has expired. Renew for ₹1 to continue creating examinations.
+              Your subscription has expired. Renew for ₹{SUBSCRIPTION_PLAN.amount} to continue creating examinations.
             </div>
             <p className="text-xs text-red-900">
               Previous subscription expired on {formatTimestamp(latestSubscription.expiresAt)}. Submit
-              a new ₹1 UPI payment below to unlock a fresh 15-day subscription and choose a new
+              a new ₹{SUBSCRIPTION_PLAN.amount} UPI payment below to unlock a fresh 15-day subscription and choose a new
               examination type.
             </p>
           </div>
@@ -451,14 +451,14 @@ export function SubscribePage() {
         <section className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 space-y-5">
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-blue-600">
-              Step 1 · Scan &amp; Pay ₹1
+              Step 1 · Scan &amp; Pay ₹{SUBSCRIPTION_PLAN.amount}
             </div>
             <h3 className="font-display text-lg font-bold text-slate-900 mt-1">
               Official UPI QR Code
             </h3>
             <p className="text-xs text-slate-500 mt-1">
               Scan this live UPI QR code with PhonePe, Google Pay, Paytm, BHIM, or any UPI app to
-              pay exactly ₹1.00.
+              pay exactly ₹{SUBSCRIPTION_PLAN.amount}.00.
             </p>
           </div>
 
@@ -466,7 +466,7 @@ export function SubscribePage() {
             {qrDataUrl ? (
               <img
                 src={qrDataUrl}
-                alt={`UPI QR code for ${SUBSCRIPTION_PLAN.upiId} ₹1`}
+                alt={`UPI QR code for ${SUBSCRIPTION_PLAN.upiId} ₹${SUBSCRIPTION_PLAN.amount}`}
                 className="w-56 h-56 rounded-lg bg-white p-2 border border-slate-200"
               />
             ) : qrError ? (
@@ -518,7 +518,7 @@ export function SubscribePage() {
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-[#0F172A] hover:bg-slate-800 rounded-lg transition-colors"
             >
               <Smartphone className="w-4 h-4" />
-              Pay using UPI App (₹1)
+              Pay using UPI App (₹{SUBSCRIPTION_PLAN.amount})
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
@@ -528,7 +528,7 @@ export function SubscribePage() {
             <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
             <div className="leading-relaxed">
               <strong className="text-slate-900">Manual Verification Required:</strong> Payments are
-              not automatically verified. After completing your ₹1 UPI transfer, upload your
+              not automatically verified. After completing your ₹{SUBSCRIPTION_PLAN.amount} UPI transfer, upload your
               payment screenshot (and optionally your UPI transaction ID) on the right to request
               activation.
             </div>
@@ -715,7 +715,7 @@ export function SubscribePage() {
                 Subscription Rules &amp; Single Examination Type Lock
               </div>
               <p className="leading-relaxed text-slate-600">
-                Your ₹1 subscription remains active for <strong>15 days</strong> from the server
+                Your ₹{SUBSCRIPTION_PLAN.amount} subscription remains active for <strong>15 days</strong> from the server
                 timestamp of admin approval and unlocks <strong>one examination type</strong> of your
                 choice ({ALLOWED_EXAMINATION_TYPES.join(', ')}). Creating your first examination
                 locks the subscription to that type for the rest of the 15-day period.

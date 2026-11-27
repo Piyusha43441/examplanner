@@ -3,6 +3,7 @@ import { CheckCircle2, Eye, FileSpreadsheet, Lock, XCircle } from 'lucide-react'
 import { ProtectedFeatureGate } from '../components/ProtectedFeatureGate';
 import { useWorkspace } from '../context/ExamWorkspaceContext';
 import { useSubscription } from '../context/SubscriptionContext';
+import { SUBSCRIPTION_PLAN } from '../core/subscriptionConstants';
 
 export function GeneratedPlansPage() {
   const { exams, activeExam, plans, activePlan, roomAllocations, selectPlanVersion } =
@@ -44,7 +45,7 @@ export function GeneratedPlansPage() {
             <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
             <span>
               <strong>Read-Only Historical Plans:</strong> Your saved seating plans are preserved.
-              Purchase a new ₹1 subscription to regenerate plans or export new PDFs.
+              Purchase a new ₹{SUBSCRIPTION_PLAN.amount} subscription to regenerate plans or export new PDFs.
             </span>
           </div>
           <button
@@ -52,7 +53,7 @@ export function GeneratedPlansPage() {
             onClick={() => navigate('/subscribe')}
             className="px-3.5 py-1.5 font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shrink-0"
           >
-            Subscribe for ₹1
+            Subscribe for ₹{SUBSCRIPTION_PLAN.amount}
           </button>
         </div>
       )}

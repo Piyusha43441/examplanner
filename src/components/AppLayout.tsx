@@ -26,6 +26,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useWorkspace } from '../context/ExamWorkspaceContext';
 import { useSubscription } from '../context/SubscriptionContext';
+import { SUBSCRIPTION_PLAN } from '../core/subscriptionConstants';
 import { logoutUser } from '../firebase/service';
 import { BrandLogo } from './BrandLogo';
 import { PublicFooter } from './PublicFooter';
@@ -192,10 +193,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               : subscriptionStatus === 'pending'
               ? 'Pending Approval'
               : subscriptionStatus === 'expired'
-              ? 'Expired — Renew ₹1'
+              ? `Expired — Renew ₹${SUBSCRIPTION_PLAN.amount}`
               : subscriptionStatus === 'revoked'
-              ? 'Revoked — Subscribe ₹1'
-              : 'Free Plan — Unlock ₹1'}
+              ? `Revoked — Subscribe ₹${SUBSCRIPTION_PLAN.amount}`
+              : `Free Plan — Unlock ₹${SUBSCRIPTION_PLAN.amount}`}
           </div>
         </button>
 

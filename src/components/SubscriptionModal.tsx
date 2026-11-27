@@ -53,7 +53,7 @@ export function SubscriptionModal() {
                 Unlock Exam Planner
               </h2>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                Get access to Exam Planner for 15 days with a one-time payment of just ₹1.
+                Get access to Exam Planner for 15 days with a one-time payment of just ₹{SUBSCRIPTION_PLAN.amount}.
               </p>
             </div>
           </div>
@@ -100,7 +100,7 @@ export function SubscriptionModal() {
                 <div className="font-semibold">Previous Payment Request Rejected</div>
                 <div>
                   Reason: {latestPaymentRequest.rejectionReason || 'Verification failed'}. You may
-                  submit a new ₹1 UPI payment request.
+                  submit a new ₹{SUBSCRIPTION_PLAN.amount} UPI payment request.
                 </div>
               </div>
             </div>
@@ -111,7 +111,7 @@ export function SubscriptionModal() {
               <CalendarClock className="w-4 h-4 text-slate-600 shrink-0 mt-0.5" />
               <div>
                 Your previous 15-day subscription has expired. Existing examinations and generated
-                seating plans remain preserved in read-only history. Purchase a new ₹1 subscription
+                seating plans remain preserved in read-only history. Purchase a new ₹{SUBSCRIPTION_PLAN.amount} subscription
                 to resume creating and managing examinations.
               </div>
             </div>
@@ -121,7 +121,7 @@ export function SubscriptionModal() {
             <div className="p-3.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-900 flex items-start gap-2.5">
               <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
               <div>
-                Your previous subscription was revoked by the administrator. Purchase a new ₹1
+                Your previous subscription was revoked by the administrator. Purchase a new ₹{SUBSCRIPTION_PLAN.amount}
                 subscription to restore access.
               </div>
             </div>
@@ -146,7 +146,7 @@ export function SubscriptionModal() {
               <li className="flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
                 <span>
-                  <strong className="text-slate-900">₹1 subscription price</strong> via official UPI
+                  <strong className="text-slate-900">₹{SUBSCRIPTION_PLAN.amount} subscription price</strong> via official UPI
                   QR code or UPI app
                 </span>
               </li>
@@ -188,7 +188,7 @@ export function SubscriptionModal() {
               onClick={handleSubscribe}
               className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
             >
-              Subscribe for ₹1
+              Subscribe for ₹{SUBSCRIPTION_PLAN.amount}
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

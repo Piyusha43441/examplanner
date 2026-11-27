@@ -57,7 +57,7 @@ export function ProtectedFeatureGate({
         </h2>
         <p className="text-sm text-slate-600 max-w-lg mx-auto leading-relaxed">
           {subscriptionStatus === 'pending' && pendingPaymentRequest
-            ? `Your ₹1 UPI payment (Ref: ${pendingPaymentRequest.transactionReferenceId?.trim() || 'Not Provided'}) has been submitted and is waiting for manual administrator approval before "${featureName}" unlocks.`
+            ? `Your ₹${pendingPaymentRequest.amount ?? SUBSCRIPTION_PLAN.amount} UPI payment (Ref: ${pendingPaymentRequest.transactionReferenceId?.trim() || 'Not Provided'}) has been submitted and is waiting for manual administrator approval before "${featureName}" unlocks.`
             : subscriptionStatus === 'expired'
             ? `Your 15-day subscription has expired. "${featureName}" is locked until a new ₹${SUBSCRIPTION_PLAN.amount} subscription is approved. All existing examinations and seating plans remain safely preserved.`
             : `Get access to Exam Planner for 15 days with a one-time payment of just ₹${SUBSCRIPTION_PLAN.amount} to access ${featureName}.`}
@@ -70,7 +70,7 @@ export function ProtectedFeatureGate({
           onClick={() => navigate('/subscribe')}
           className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
         >
-          {subscriptionStatus === 'pending' ? 'View Payment Request' : 'Subscribe for ₹1'}
+          {subscriptionStatus === 'pending' ? 'View Payment Request' : `Subscribe for ₹${SUBSCRIPTION_PLAN.amount}`}
           <ArrowRight className="w-4 h-4" />
         </button>
 

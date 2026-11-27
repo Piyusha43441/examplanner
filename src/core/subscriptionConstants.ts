@@ -13,7 +13,7 @@ export type AllowedExaminationType = (typeof ALLOWED_EXAMINATION_TYPES)[number];
 
 export const SUBSCRIPTION_PLAN = {
   planName: 'Exam Planner Access',
-  amount: 1,
+  amount: 499,
   currency: 'INR',
   validityDays: 15,
   validityMs: 15 * 24 * 60 * 60 * 1000,

@@ -415,7 +415,7 @@ describe('Payment Screenshot Storage & Verification (Cloudflare R2 + Worker + Fi
 
     expect(record.paymentRequestId).toBe('req_ok');
     expect(record.status).toBe('pending');
-    expect(record.amount).toBe(1);
+    expect(record.amount).toBe(499);
     expect(record.currency).toBe('INR');
     expect(record.transactionReferenceId).toBeNull();
     expect(record.subscriptionId).toBeNull();
@@ -602,7 +602,7 @@ describe('Payment Screenshot Storage & Verification (Cloudflare R2 + Worker + Fi
       institutionName: 'Model High School',
       userId: 'user_1',
       userEmail: 'coord@school.edu',
-      amount: 1,
+      amount: 499,
       status: 'pending',
       screenshotStoragePath: 'payment_proofs/inst_1/user_1/req_approve_uuid.jpg'
     });
@@ -620,7 +620,7 @@ describe('Payment Screenshot Storage & Verification (Cloudflare R2 + Worker + Fi
     expect(subDoc).toBeDefined();
     expect(subDoc?.approvalStatus).toBe('approved');
     expect(subDoc?.paymentStatus).toBe('approved');
-    expect(subDoc?.amount).toBe(1);
+    expect(subDoc?.amount).toBe(499);
     expect(subDoc?.examinationTypeLocked).toBe(false);
 
     const activatedMs = Date.parse(subDoc?.activatedAt);

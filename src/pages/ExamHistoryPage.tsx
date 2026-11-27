@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useWorkspace } from '../context/ExamWorkspaceContext';
 import { useSubscription } from '../context/SubscriptionContext';
+import { SUBSCRIPTION_PLAN } from '../core/subscriptionConstants';
 import { ExamRecord } from '../core/types';
 
 export function ExamHistoryPage() {
@@ -133,7 +134,7 @@ export function ExamHistoryPage() {
             <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
             <span>
               <strong>Read-Only History Mode:</strong> Your saved examinations and audit records are
-              preserved. Subscribe for ₹1 to unlock creating, editing, duplicating, or deleting
+              preserved. Subscribe for ₹{SUBSCRIPTION_PLAN.amount} to unlock creating, editing, duplicating, or deleting
               examinations.
             </span>
           </div>
@@ -142,7 +143,7 @@ export function ExamHistoryPage() {
             onClick={() => navigate('/subscribe')}
             className="px-3.5 py-1.5 font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shrink-0"
           >
-            Subscribe for ₹1
+            Subscribe for ₹{SUBSCRIPTION_PLAN.amount}
           </button>
         </div>
       )}

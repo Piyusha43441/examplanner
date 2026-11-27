@@ -283,7 +283,7 @@ export function DashboardPage() {
               <p className="text-xs text-slate-600 flex items-start gap-1.5">
                 <CalendarClock className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
                 <span>
-                  Your subscription has expired. Renew for ₹1 to continue creating examinations.
+                  Your subscription has expired. Renew for ₹{SUBSCRIPTION_PLAN.amount} to continue creating examinations.
                   (Expired on{' '}
                   <span className="font-mono">{formatDateOnly(latestSubscription.expiresAt)}</span>
                   ; existing examinations remain preserved in history.)
@@ -294,20 +294,20 @@ export function DashboardPage() {
             {subscriptionStatus === 'rejected' && latestPaymentRequest && (
               <p className="text-xs text-red-700">
                 Last payment request was rejected: {latestPaymentRequest.rejectionReason}. You may
-                submit a new ₹1 UPI payment request.
+                submit a new ₹{SUBSCRIPTION_PLAN.amount} UPI payment request.
               </p>
             )}
 
             {subscriptionStatus === 'revoked' && latestSubscription && (
               <p className="text-xs text-red-700">
                 Your previous subscription was revoked ({latestSubscription.revocationReason || 'Admin action'}).
-                Purchase a new ₹1 subscription to restore access.
+                Purchase a new ₹{SUBSCRIPTION_PLAN.amount} subscription to restore access.
               </p>
             )}
 
             {subscriptionStatus === 'none' && (
               <p className="text-xs text-slate-600">
-                Unlock Exam Planner for 15 days with a one-time ₹1 UPI payment (includes 1
+                Unlock Exam Planner for 15 days with a one-time ₹{SUBSCRIPTION_PLAN.amount} UPI payment (includes 1
                 examination type per subscription, verified manually by the administrator).
               </p>
             )}
@@ -328,8 +328,8 @@ export function DashboardPage() {
                 : subscriptionStatus === 'pending'
                 ? 'View Payment Status'
                 : subscriptionStatus === 'expired'
-                ? 'Renew for ₹1'
-                : 'Subscribe for ₹1'}
+                ? `Renew for ₹${SUBSCRIPTION_PLAN.amount}`
+                : `Subscribe for ₹${SUBSCRIPTION_PLAN.amount}`}
             </button>
           </div>
         </div>

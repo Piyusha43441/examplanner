@@ -9,9 +9,9 @@ import {
 } from '../subscriptionConstants';
 
 describe('Subscription Plan & Single-Examination-Type Locking Rules', () => {
-  it('defines the single ₹1 / 15-day Exam Planner Access UPI subscription plan', () => {
+  it('defines the single ₹499 / 15-day Exam Planner Access UPI subscription plan', () => {
     expect(SUBSCRIPTION_PLAN.planName).toBe('Exam Planner Access');
-    expect(SUBSCRIPTION_PLAN.amount).toBe(1);
+    expect(SUBSCRIPTION_PLAN.amount).toBe(499);
     expect(SUBSCRIPTION_PLAN.validityDays).toBe(15);
     expect(SUBSCRIPTION_PLAN.paymentMethod).toBe('UPI');
     expect(SUBSCRIPTION_PLAN.upiId).toBe('BHARATPE2N0Y0H9Z0B84598@unitype');
@@ -24,7 +24,7 @@ describe('Subscription Plan & Single-Examination-Type Locking Rules', () => {
     const parsed = new URL(uri);
     expect(parsed.searchParams.get('pa')).toBe('BHARATPE2N0Y0H9Z0B84598@unitype');
     expect(parsed.searchParams.get('pn')).toBe('Exam Planner');
-    expect(parsed.searchParams.get('am')).toBe('1.00');
+    expect(parsed.searchParams.get('am')).toBe('499.00');
     expect(parsed.searchParams.get('cu')).toBe('INR');
     expect(parsed.searchParams.get('tn')).toBe('Exam Planner Subscription');
   });

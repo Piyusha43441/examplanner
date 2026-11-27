@@ -184,7 +184,7 @@ service cloud.firestore {
 
       allow create: if isAuthenticated() &&
         request.resource.data.userId == request.auth.uid &&
-        request.resource.data.amount == 1 &&
+        request.resource.data.amount == 499 &&
         request.resource.data.currency == 'INR' &&
         request.resource.data.status == 'pending' &&
         request.resource.data.subscriptionId == null &&

@@ -1280,7 +1280,7 @@ export async function submitPaymentRequest(params: {
     userId: params.userId,
     userEmail: params.userEmail,
     planId: 'Exam Planner Access',
-    amount: 1,
+    amount: SUBSCRIPTION_PLAN.amount,
     currency: 'INR',
     upiId: 'BHARATPE2N0Y0H9Z0B84598@unitype',
     transactionReferenceId: trimmedTxn || null,
@@ -1425,7 +1425,7 @@ export async function validateActiveSubscriptionForExam(
       toMillis(s.expiresAt) > Date.now()
   );
   if (!active) {
-    throw new Error('An active ₹1 Exam Planner subscription is required to access this feature.');
+    throw new Error(`An active ₹${SUBSCRIPTION_PLAN.amount} Exam Planner subscription is required to access this feature.`);
   }
   return active.subscriptionId;
 }
@@ -1476,7 +1476,9 @@ export async function fetchAdminDashboardData(): Promise<{
   const approvedPayments = paymentRequests.filter((r) => r.status === 'approved').length;
   const rejectedPayments = paymentRequests.filter((r) => r.status === 'rejected').length;
   const activeSubscriptions = subscriptions.filter((s) => toMillis(s.expiresAt) > Date.now()).length;
-  const totalCollectedAmount = approvedPayments * 1;
+  const totalCollectedAmount = paymentRequests
+    .filter((r) => r.status === 'approved')
+    .reduce((sum, r) => sum + (Number(r.amount) || SUBSCRIPTION_PLAN.amount), 0);
 
   return {
     stats: {
@@ -1530,7 +1532,7 @@ export async function approvePaymentRequest(params: {
     userEmail: reqData.userEmail,
     paymentRequestId: reqData.paymentRequestId,
     planName: 'Exam Planner Access',
-    amount: 1,
+    amount: Number(reqData.amount) || SUBSCRIPTION_PLAN.amount,
     currency: 'INR',
     paymentStatus: 'approved',
     approvalStatus: 'approved',
