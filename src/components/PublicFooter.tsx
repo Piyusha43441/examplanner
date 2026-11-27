@@ -30,12 +30,18 @@ export function PublicFooter() {
                 <User className="w-4 h-4 text-slate-400 shrink-0" />
                 <span>Shyam Agarwal</span>
               </div>
-              <div>
+              <div className="flex flex-col gap-1.5">
                 <Link
                   to="/about"
                   className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors"
                 >
                   <span>About the Founder</span>
+                </Link>
+                <Link
+                  to="/diagnostics"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800 hover:underline transition-colors"
+                >
+                  <span>System Diagnostics</span>
                 </Link>
               </div>
             </div>

@@ -335,7 +335,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      {/* Real KPI Summary Strip (Derived strictly from Firestore records) */}
+      {/* Real KPI Summary Strip (Derived strictly from Firebase Firestore records) */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           label="Total Examinations"

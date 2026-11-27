@@ -5,13 +5,14 @@ import { BrandLogo } from '../components/BrandLogo';
 import { PublicFooter } from '../components/PublicFooter';
 import { useAuth } from '../context/AuthContext';
 import { InstitutionType } from '../core/types';
-import { firebaseProjectId, isFirebaseConfigured } from '../firebase/config';
+import { isFirebaseConfigured } from '../firebase/config';
 import {
   createInstitutionAndUserProfile,
   loginWithEmail,
   logoutUser,
   registerWithEmailAndInstitution,
-  sendPasswordReset
+  sendPasswordReset,
+  updateUserPassword
 } from '../firebase/service';
 
 const INSTITUTION_TYPES: InstitutionType[] = [
@@ -58,23 +59,27 @@ async function compressLogoFile(file: File): Promise<string> {
 }
 
 export function AuthPage() {
-  const { firebaseUser, userProfile, refreshProfile } = useAuth();
-  const isProfileOnboarding = Boolean(firebaseUser && !userProfile);
+  const { authUser, userProfile, isPasswordRecovery, clearPasswordRecovery, refreshProfile } =
+    useAuth();
+  const isProfileOnboarding = Boolean(authUser && !userProfile && !isPasswordRecovery);
 
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
-  const [showProviderSetupTip, setShowProviderSetupTip] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Login / Reset fields
+  // Login / Reset / Recovery fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
   // Registration Personal + Institution fields
-  const [fullName, setFullName] = useState(firebaseUser?.displayName || '');
-  const [regEmail, setRegEmail] = useState(firebaseUser?.email || '');
+  const [fullName, setFullName] = useState(
+    String(authUser?.displayName || '')
+  );
+  const [regEmail, setRegEmail] = useState(authUser?.email || '');
   const [regPassword, setRegPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [institutionName, setInstitutionName] = useState('');
@@ -88,29 +93,22 @@ export function AuthPage() {
 
   const handleAuthError = (err: unknown) => {
     const msg = err instanceof Error ? err.message : 'Authentication error occurred.';
-    if (msg.includes('auth/operation-not-allowed')) {
-      setShowProviderSetupTip(true);
-      setErrorMsg(
-        'Email/Password sign-in is currently disabled in Firebase Authentication for this project. Enable the Email/Password provider in Firebase Console to log in or create an account.'
-      );
-      return;
-    }
-    if (msg.includes('auth/unauthorized-domain')) {
-      const host = typeof window !== 'undefined' ? window.location.hostname : 'this domain';
-      setErrorMsg(
-        `Domain "${host}" is not authorized in Firebase Authentication. Add "${host}" under Firebase Console → Authentication → Settings → Authorized domains.`
-      );
-      return;
-    }
-    if (msg.includes('auth/invalid-credential') || msg.includes('auth/wrong-password')) {
+    const lower = msg.toLowerCase();
+    if (lower.includes('invalid login credentials')) {
       setErrorMsg('Invalid email address or password.');
       return;
     }
-    if (msg.includes('auth/email-already-in-use')) {
+    if (lower.includes('email not confirmed')) {
+      setErrorMsg(
+        'Please confirm your email address using the verification link sent to your inbox before signing in.'
+      );
+      return;
+    }
+    if (lower.includes('user already registered') || lower.includes('already exists')) {
       setErrorMsg('An account with this email already exists. Please sign in.');
       return;
     }
-    if (msg.includes('auth/weak-password')) {
+    if (lower.includes('password should be at least')) {
       setErrorMsg('Password must be at least 6 characters.');
       return;
     }
@@ -121,7 +119,6 @@ export function AuthPage() {
     e.preventDefault();
     setErrorMsg(null);
     setInfoMsg(null);
-    setShowProviderSetupTip(false);
 
     if (!email.trim() || !password) {
       setErrorMsg('Enter your email address and password.');
@@ -157,14 +154,43 @@ export function AuthPage() {
     }
   };
 
+  const handleCompletePasswordRecovery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    setInfoMsg(null);
+    if (newPassword.length < 6) {
+      setErrorMsg('New password must be at least 6 characters long.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setErrorMsg('Passwords do not match.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await updateUserPassword(newPassword);
+      setNewPassword('');
+      setConfirmNewPassword('');
+      clearPasswordRecovery();
+      await refreshProfile();
+      setInfoMsg('Password updated successfully. You are now signed in.');
+      setMode('login');
+    } catch (err) {
+      handleAuthError(err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setInfoMsg(null);
-    setShowProviderSetupTip(false);
 
-    const targetName = (isProfileOnboarding ? fullName || firebaseUser?.displayName || '' : fullName).trim();
-    const targetEmail = (isProfileOnboarding ? firebaseUser?.email || regEmail : regEmail).trim();
+    const targetName = (
+      isProfileOnboarding ? fullName || String(authUser?.displayName || '') : fullName
+    ).trim();
+    const targetEmail = (isProfileOnboarding ? authUser?.email || regEmail : regEmail).trim();
 
     if (!targetName || !targetEmail || !institutionName.trim() || !address.trim() || !city.trim() || !stateName.trim() || !pinCode.trim() || !mobile.trim()) {
       setErrorMsg('Please complete all required personal and institution fields.');
@@ -184,8 +210,8 @@ export function AuthPage() {
 
     setSubmitting(true);
     try {
-      if (isProfileOnboarding && firebaseUser) {
-        await createInstitutionAndUserProfile(firebaseUser.uid, {
+      if (isProfileOnboarding && authUser) {
+        await createInstitutionAndUserProfile({
           fullName: targetName,
           email: targetEmail,
           institutionName: institutionName.trim(),
@@ -197,8 +223,9 @@ export function AuthPage() {
           mobile: mobile.trim(),
           logoDataUrl
         });
+        await refreshProfile();
       } else {
-        await registerWithEmailAndInstitution({
+        const res = await registerWithEmailAndInstitution({
           fullName: targetName,
           email: targetEmail,
           password: regPassword,
@@ -211,8 +238,16 @@ export function AuthPage() {
           mobile: mobile.trim(),
           logoDataUrl
         });
+        if (res.requiresEmailVerification) {
+          setInfoMsg(
+            `Account created for ${targetEmail}. Please check your inbox and click the verification link before signing in. Your institution workspace will finish initializing automatically upon first login.`
+          );
+          setEmail(targetEmail);
+          setMode('login');
+          return;
+        }
+        await refreshProfile();
       }
-      await refreshProfile();
     } catch (err) {
       handleAuthError(err);
     } finally {
@@ -260,7 +295,7 @@ export function AuthPage() {
             <div>
               <div className="font-semibold text-white">Private Institution Data Space</div>
               <div className="text-slate-400 text-xs mt-0.5">
-                Every institution operates in an isolated Firebase tenant protected by role and ownership security rules.
+                Every institution operates in an isolated Firebase Firestore tenant protected by strict Firestore security rules.
               </div>
             </div>
             <div>
@@ -285,25 +320,25 @@ export function AuthPage() {
       <div className="lg:col-span-7 flex items-center justify-center p-6 sm:p-10 lg:p-14">
         <div className="w-full max-w-xl bg-white border border-slate-200 rounded-xl p-6 sm:p-8">
           {!isFirebaseConfigured && (
-            <div className="mb-6 p-4 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900">
-              Firebase credentials are not configured in <code>firebase-applet-config.json</code>. Configure your Firebase project before signing in.
+            <div className="mb-6 p-4 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-2">
+              <div>
+                Firebase environment variables (<code>VITE_FIREBASE_API_KEY</code>, <code>VITE_FIREBASE_PROJECT_ID</code>, etc.) are not configured yet in this environment.
+              </div>
+              <div>
+                <Link
+                  to="/diagnostics"
+                  className="inline-flex items-center gap-1.5 font-semibold text-blue-700 hover:text-blue-900 underline"
+                >
+                  Open Production Diagnostics &amp; Setup Guide &rarr;
+                </Link>
+              </div>
             </div>
           )}
 
           {errorMsg && (
             <div className="mb-5 p-3.5 rounded-lg bg-red-50 border border-red-200 flex items-start gap-2.5 text-sm text-red-800">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
-              <div className="space-y-1.5">
-                <p>{errorMsg}</p>
-                {showProviderSetupTip && (
-                  <p className="text-xs text-red-700">
-                    Go to Firebase Console → Authentication → Sign-in method for project{' '}
-                    <code className="font-mono font-semibold">{firebaseProjectId}</code>, click{' '}
-                    <strong>Email/Password</strong>, toggle <strong>Enable</strong>, and save. If deploying on a custom/Netlify domain, also add that domain under{' '}
-                    <strong>Authentication → Settings → Authorized domains</strong>.
-                  </p>
-                )}
-              </div>
+              <p>{errorMsg}</p>
             </div>
           )}
 
@@ -314,7 +349,64 @@ export function AuthPage() {
             </div>
           )}
 
-          {isProfileOnboarding ? (
+          {isPasswordRecovery ? (
+            <div>
+              <div className="flex items-center gap-2 text-slate-900 mb-1">
+                <KeyRound className="w-5 h-5 text-blue-600" />
+                <h2 className="font-display text-xl font-bold">Set New Password</h2>
+              </div>
+              <p className="text-sm text-slate-500 mb-6">
+                Enter a new password for {authUser?.email || 'your account'} to complete recovery.
+              </p>
+              <form onSubmit={handleCompletePasswordRecovery} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    New Password *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Minimum 6 characters"
+                    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Confirm New Password *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={confirmNewPassword}
+                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    placeholder="Repeat new password"
+                    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="flex-1 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                    Update Password
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => clearPasswordRecovery()}
+                    className="py-2.5 px-4 border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : isProfileOnboarding ? (
             <div>
               <div className="flex items-center justify-between gap-4 mb-6">
                 <div>
@@ -322,7 +414,7 @@ export function AuthPage() {
                     Complete Institution Setup
                   </h2>
                   <p className="text-sm text-slate-500 mt-1">
-                    Signed in as {firebaseUser?.email}. Enter your institution details to create your private workspace.
+                    Signed in as {authUser?.email}. Enter your institution details to create your private workspace.
                   </p>
                 </div>
                 <button
@@ -341,7 +433,7 @@ export function AuthPage() {
                   <input
                     type="text"
                     required
-                    value={fullName || firebaseUser?.displayName || ''}
+                    value={fullName || String(authUser?.displayName || '')}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="e.g. Dr. Ananya Kulkarni"
                     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600"
@@ -484,7 +576,7 @@ export function AuthPage() {
                     <h2 className="font-display text-xl font-bold">Reset Password</h2>
                   </div>
                   <p className="text-sm text-slate-500 mb-6">
-                    Enter your registered email address and Firebase will send a password reset link.
+                    Enter your registered email address and Firebase Authentication will send a password reset link.
                   </p>
                   <form onSubmit={handleForgotPassword} className="space-y-4">
                     <div>

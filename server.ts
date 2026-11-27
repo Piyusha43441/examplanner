@@ -1,222 +1,18 @@
 import 'dotenv/config';
 import express from 'express';
 import path from 'path';
-import fs from 'fs';
-import { pathToFileURL } from 'url';
-import { DatabaseSync } from 'node:sqlite';
 import { GoogleGenAI, Type } from '@google/genai';
+import {
+  getR2ConfigurationStatus,
+  handleAdminPreviewUrl,
+  handleCleanupOrphanProof,
+  handleCreateUploadUrl,
+  handleInstitutionPreviewUrl,
+  handleVerifyUploadedProof,
+  PaymentStorageApiError
+} from './server/paymentProofService.ts';
 
 const PORT = 3000;
-const MAX_UPLOAD_BODY_BYTES = 6 * 1024 * 1024;
-
-type LocalWorkerRuntime = {
-  handler: (request: Request, env: Record<string, unknown>) => Promise<Response>;
-  env: Record<string, unknown>;
-};
-
-let localWorkerPromise: Promise<LocalWorkerRuntime> | null = null;
-
-function createLocalD1Adapter(sqlite: DatabaseSync) {
-  const wrapStmt = (sql: string, boundArgs: unknown[] = []) => {
-    const execRun = () => {
-      const stmt = sqlite.prepare(sql);
-      const info = stmt.run(...(boundArgs as (string | number | Uint8Array | null)[]));
-      return {
-        success: true,
-        meta: {
-          duration: 1,
-          size_after: 0,
-          rows_read: 0,
-          rows_written: Number(info.changes || 0),
-          last_row_id: Number(info.lastInsertRowid || 0),
-          changed_db: Number(info.changes || 0) > 0,
-          changes: Number(info.changes || 0)
-        },
-        results: []
-      };
-    };
-
-    return {
-      bind: (...args: unknown[]) => wrapStmt(sql, args),
-      first: async <T = Record<string, unknown>>(colName?: string): Promise<T | null> => {
-        const stmt = sqlite.prepare(sql);
-        const row = stmt.get(...(boundArgs as (string | number | Uint8Array | null)[])) as
-          | Record<string, unknown>
-          | undefined;
-        if (!row) return null;
-        if (colName) return (row[colName] as T) ?? null;
-        return row as T;
-      },
-      all: async <T = Record<string, unknown>>() => {
-        const stmt = sqlite.prepare(sql);
-        const rows = stmt.all(...(boundArgs as (string | number | Uint8Array | null)[])) as T[];
-        return {
-          success: true,
-          meta: {
-            duration: 1,
-            size_after: 0,
-            rows_read: rows.length,
-            rows_written: 0,
-            last_row_id: 0,
-            changed_db: false,
-            changes: 0
-          },
-          results: rows
-        };
-      },
-      run: async () => execRun(),
-      raw: async () => [],
-      _execSync: execRun
-    };
-  };
-
-  return {
-    prepare: (sql: string) => wrapStmt(sql),
-    batch: async (statements: Array<{ _execSync: () => unknown }>) => {
-      sqlite.exec('BEGIN IMMEDIATE');
-      try {
-        const results = statements.map((s) => s._execSync());
-        sqlite.exec('COMMIT');
-        return results;
-      } catch (err) {
-        sqlite.exec('ROLLBACK');
-        throw err;
-      }
-    },
-    exec: async (sql: string) => {
-      sqlite.exec(sql);
-      return { count: 1, duration: 1 };
-    }
-  };
-}
-
-function createLocalR2Adapter(proofRootDir: string) {
-  fs.mkdirSync(proofRootDir, { recursive: true });
-
-  const resolveSafePaths = (key: string) => {
-    if (!key || key.includes('\0') || key.includes('..') || path.isAbsolute(key)) {
-      throw new Error('Invalid storage key.');
-    }
-    const dataPath = path.resolve(proofRootDir, key);
-    if (!dataPath.startsWith(proofRootDir + path.sep)) {
-      throw new Error('Storage key escapes local bucket directory.');
-    }
-    const metaPath = `${dataPath}.meta.json`;
-    return { dataPath, metaPath };
-  };
-
-  return {
-    put: async (
-      key: string,
-      value: ArrayBuffer | ArrayBufferView | Blob | string,
-      opts?: { httpMetadata?: Record<string, string>; customMetadata?: Record<string, string> }
-    ) => {
-      const { dataPath, metaPath } = resolveSafePaths(key);
-      fs.mkdirSync(path.dirname(dataPath), { recursive: true });
-
-      let bytes: Uint8Array;
-      if (value instanceof Uint8Array) {
-        bytes = value;
-      } else if (ArrayBuffer.isView(value)) {
-        bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-      } else if (value instanceof ArrayBuffer) {
-        bytes = new Uint8Array(value);
-      } else if (typeof value === 'string') {
-        bytes = new TextEncoder().encode(value);
-      } else {
-        bytes = new Uint8Array(await value.arrayBuffer());
-      }
-
-      fs.writeFileSync(dataPath, bytes);
-      fs.writeFileSync(
-        metaPath,
-        JSON.stringify({
-          size: bytes.byteLength,
-          httpMetadata: opts?.httpMetadata ?? {},
-          customMetadata: opts?.customMetadata ?? {}
-        })
-      );
-      return { key, size: bytes.byteLength };
-    },
-    head: async (key: string) => {
-      const { dataPath, metaPath } = resolveSafePaths(key);
-      if (!fs.existsSync(dataPath)) return null;
-      const stat = fs.statSync(dataPath);
-      let meta: { httpMetadata?: Record<string, string>; customMetadata?: Record<string, string> } = {};
-      if (fs.existsSync(metaPath)) {
-        meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
-      }
-      return {
-        key,
-        size: stat.size,
-        httpMetadata: meta.httpMetadata,
-        customMetadata: meta.customMetadata
-      };
-    },
-    get: async (key: string) => {
-      const { dataPath, metaPath } = resolveSafePaths(key);
-      if (!fs.existsSync(dataPath)) return null;
-      const bytes = new Uint8Array(fs.readFileSync(dataPath));
-      let meta: { httpMetadata?: Record<string, string>; customMetadata?: Record<string, string> } = {};
-      if (fs.existsSync(metaPath)) {
-        meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
-      }
-      return {
-        key,
-        size: bytes.byteLength,
-        httpMetadata: meta.httpMetadata,
-        customMetadata: meta.customMetadata,
-        body: new ReadableStream({
-          start(controller) {
-            controller.enqueue(bytes);
-            controller.close();
-          }
-        })
-      };
-    }
-  };
-}
-
-async function getLocalWorkerRuntime(): Promise<LocalWorkerRuntime> {
-  if (!localWorkerPromise) {
-    localWorkerPromise = (async () => {
-      const rootDir = import.meta.dirname;
-      const dataDir = path.resolve(rootDir, '.local-data');
-      fs.mkdirSync(dataDir, { recursive: true });
-
-      const sqlite = new DatabaseSync(path.join(dataDir, 'exam_planner_preview.db'));
-      const migrationPath = path.resolve(rootDir, 'cloudflare', 'migrations', '0001_init.sql');
-      sqlite.exec(fs.readFileSync(migrationPath, 'utf8'));
-
-      const firebaseConfigPath = path.resolve(rootDir, 'firebase-applet-config.json');
-      const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf8')) as {
-        projectId?: string;
-        firestoreDatabaseId?: string;
-      };
-
-      const workerModuleUrl = pathToFileURL(
-        path.resolve(rootDir, 'cloudflare', 'src', 'index.ts')
-      ).href;
-      const workerMod = (await import(workerModuleUrl)) as {
-        createWorkerHandler: () => (request: Request, env: Record<string, unknown>) => Promise<Response>;
-      };
-
-      return {
-        handler: workerMod.createWorkerHandler(),
-        env: {
-          DB: createLocalD1Adapter(sqlite),
-          PROOF_BUCKET: createLocalR2Adapter(path.join(dataDir, 'r2-proofs')),
-          FIREBASE_PROJECT_ID: firebaseConfig.projectId || 'abstract-freehold-6cf5x',
-          FIREBASE_DATABASE_ID:
-            firebaseConfig.firestoreDatabaseId || 'ai-studio-57bf1b23-c825-4dd4-8d38-a183f4ad98fb',
-          ADMIN_EMAIL: process.env.ADMIN_EMAIL || 'agarwalpiyush263@gmail.com',
-          ALLOWED_ORIGINS: ''
-        }
-      };
-    })();
-  }
-  return localWorkerPromise;
-}
 
 function getAiClient(): GoogleGenAI | null {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -239,9 +35,17 @@ async function startServer() {
 
   // Health check
   app.get('/api/health', (_req, res) => {
+    const r2Status = getR2ConfigurationStatus();
+    const r2WorkerUrl = (process.env.VITE_R2_WORKER_URL || '').trim();
     res.json({
       ok: true,
-      aiConfigured: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY')
+      service: 'exam-planner-api',
+      storageProvider: 'cloudflare-r2',
+      aiConfigured: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'MY_GEMINI_API_KEY'),
+      r2StorageConfigured: r2Status.configured,
+      r2MissingConfig: r2Status.missing,
+      r2BucketName: r2Status.bucketName,
+      r2WorkerConfigured: Boolean(r2WorkerUrl && r2WorkerUrl.startsWith('https://'))
     });
   });
 
@@ -255,96 +59,71 @@ async function startServer() {
     });
   });
 
-  // Proxy to deployed Cloudflare Worker when CLOUDFLARE_WORKER_URL is configured;
-  // otherwise run the Worker logic against local SQLite + private disk storage for preview continuity.
-  const cloudflarePrefixes = [
-    '/api/subscription',
-    '/api/payment',
-    '/api/notifications',
-    '/api/admin',
-    '/api/examinations'
-  ];
-  app.use(cloudflarePrefixes, async (req, res) => {
-    const targetBase = (process.env.CLOUDFLARE_WORKER_URL || '').trim().replace(/\/+$/, '');
-    const forwardHeaders = new Headers();
-    const authHeader = req.header('authorization');
-    const contentTypeHeader = req.header('content-type');
-    const originHeader = req.header('origin');
-    if (authHeader) forwardHeaders.set('Authorization', authHeader);
-    if (contentTypeHeader) forwardHeaders.set('Content-Type', contentTypeHeader);
-    if (originHeader) forwardHeaders.set('Origin', originHeader);
+  // Cloudflare R2 private payment proof storage routes (fallback when VITE_R2_WORKER_URL is unset)
+  const sendPaymentProofError = (res: express.Response, err: unknown, fallbackMessage: string) => {
+    const status = err instanceof PaymentStorageApiError ? err.status : 500;
+    const code = err instanceof PaymentStorageApiError ? err.code : 'INTERNAL_ERROR';
+    const message = err instanceof Error ? err.message : fallbackMessage;
+    res.status(status).setHeader('Cache-Control', 'no-store').json({ error: message, code });
+  };
 
-    let rawBody: Buffer | undefined;
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      if (contentTypeHeader && contentTypeHeader.toLowerCase().includes('application/json')) {
-        rawBody = Buffer.from(JSON.stringify(req.body ?? {}), 'utf8');
-      } else {
-        const chunks: Buffer[] = [];
-        let totalBytes = 0;
-        for await (const chunk of req) {
-          const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-          totalBytes += buf.byteLength;
-          if (totalBytes > MAX_UPLOAD_BODY_BYTES) {
-            res.status(413).json({
-              error: 'Uploaded file exceeds the 5 MB limit.',
-              code: 'FILE_TOO_LARGE'
-            });
-            return;
-          }
-          chunks.push(buf);
-        }
-        rawBody = Buffer.concat(chunks);
-      }
-    }
-
-    if (targetBase) {
-      try {
-        const upstream = await fetch(`${targetBase}${req.originalUrl}`, {
-          method: req.method,
-          headers: forwardHeaders,
-          body: rawBody ? new Uint8Array(rawBody) : undefined
-        });
-        res.status(upstream.status);
-        upstream.headers.forEach((value, key) => {
-          if (key.toLowerCase() !== 'transfer-encoding' && key.toLowerCase() !== 'content-encoding') {
-            res.setHeader(key, value);
-          }
-        });
-        res.send(Buffer.from(await upstream.arrayBuffer()));
-      } catch (err) {
-        res.status(502).json({
-          error: err instanceof Error ? err.message : 'Failed to proxy request to Cloudflare Worker.',
-          code: 'CLOUDFLARE_PROXY_ERROR'
-        });
-      }
-      return;
-    }
-
+  app.post('/api/payment-proof/upload-url', async (req, res) => {
     try {
-      const runtime = await getLocalWorkerRuntime();
-      const protocol = req.protocol || 'http';
-      const host = req.get('host') || `localhost:${PORT}`;
-      const webReq = new Request(`${protocol}://${host}${req.originalUrl}`, {
-        method: req.method,
-        headers: forwardHeaders,
-        body: rawBody ? new Uint8Array(rawBody) : undefined
+      const result = await handleCreateUploadUrl({
+        authHeader: req.headers.authorization || null,
+        body: req.body ?? {}
       });
-      const workerRes = await runtime.handler(webReq, runtime.env);
-      res.status(workerRes.status);
-      workerRes.headers.forEach((value, key) => {
-        if (key.toLowerCase() !== 'transfer-encoding' && key.toLowerCase() !== 'content-encoding') {
-          res.setHeader(key, value);
-        }
-      });
-      res.send(Buffer.from(await workerRes.arrayBuffer()));
+      res.setHeader('Cache-Control', 'no-store').json(result);
     } catch (err) {
-      res.status(503).json({
-        error:
-          err instanceof Error
-            ? err.message
-            : 'Cloudflare Worker API is not configured. Deploy /cloudflare and set VITE_CLOUDFLARE_API_URL.',
-        code: 'CLOUDFLARE_NOT_CONFIGURED'
+      sendPaymentProofError(res, err, 'Unable to create signed upload URL.');
+    }
+  });
+
+  app.post('/api/payment-proof/verify', async (req, res) => {
+    try {
+      const result = await handleVerifyUploadedProof({
+        authHeader: req.headers.authorization || null,
+        body: req.body ?? {}
       });
+      res.setHeader('Cache-Control', 'no-store').json(result);
+    } catch (err) {
+      sendPaymentProofError(res, err, 'Unable to verify uploaded payment proof.');
+    }
+  });
+
+  app.post('/api/payment-proof/cleanup', async (req, res) => {
+    try {
+      const result = await handleCleanupOrphanProof({
+        authHeader: req.headers.authorization || null,
+        body: req.body ?? {}
+      });
+      res.setHeader('Cache-Control', 'no-store').json(result);
+    } catch (err) {
+      sendPaymentProofError(res, err, 'Unable to clean up orphaned payment proof.');
+    }
+  });
+
+  app.post('/api/payment-proof/preview-url', async (req, res) => {
+    try {
+      const result = await handleAdminPreviewUrl({
+        authHeader: req.headers.authorization || null,
+        body: req.body ?? {}
+      });
+      res.setHeader('Cache-Control', 'no-store').json(result);
+    } catch (err) {
+      sendPaymentProofError(res, err, 'Unable to generate administrator preview URL.');
+    }
+  });
+
+  app.post('/api/payment-proof/institution-preview-url', async (req, res) => {
+    try {
+      const result = await handleInstitutionPreviewUrl({
+        authHeader: req.headers.authorization || null,
+        body: req.body ?? {}
+      });
+      res.setHeader('Cache-Control', 'no-store').json(result);
+    } catch (err) {
+      sendPaymentProofError(res, err, 'Unable to generate institution preview URL.');
     }
   });
 
@@ -376,7 +155,7 @@ async function startServer() {
       });
 
       const response = await ai.models.generateContent({
-        model: 'gemini-4-hydrogen',
+        model: 'gemini-2.5-flash',
         contents: JSON.stringify({
           task: 'Scan uploaded student spreadsheet columns and sample rows for roll-number formatting, missing names, unexpected characters, or structural issues.',
           headers: safeHeaders,
@@ -470,7 +249,7 @@ async function startServer() {
       };
 
       const response = await ai.models.generateContent({
-        model: 'gemini-4-hydrogen',
+        model: 'gemini-2.5-flash',
         contents: JSON.stringify(payload),
         config: {
           systemInstruction:

@@ -1,0 +1,16 @@
+name = "exam-planner-r2-worker"
+main = "src/index.ts"
+compatibility_date = "2025-03-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+FIREBASE_PROJECT_ID = "abstract-freehold-6cf5x"
+FIREBASE_FIRESTORE_DATABASE_ID = "ai-studio-57bf1b23-c825-4dd4-8d38-a183f4ad98fb"
+R2_BUCKET_NAME = "exam-planner-payment-proofs"
+ADMIN_EMAIL = "agarwalpiyush263@gmail.com"
+ALLOWED_ORIGINS = "http://localhost:3000,https://ais-dev-aewbzri6lknsxvnf6a3cii-697000586977.asia-east1.run.app,https://ais-pre-aewbzri6lknsxvnf6a3cii-697000586977.asia-east1.run.app,https://*.netlify.app"
+
+# Configure sensitive R2 API credentials ONLY via Wrangler secrets (never commit them here):
+#   npx wrangler secret put R2_ACCOUNT_ID
+#   npx wrangler secret put R2_ACCESS_KEY_ID
+#   npx wrangler secret put R2_SECRET_ACCESS_KEY

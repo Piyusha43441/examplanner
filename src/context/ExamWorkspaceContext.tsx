@@ -100,7 +100,7 @@ interface WorkspaceContextValue {
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 export function ExamWorkspaceProvider({ children }: { children: React.ReactNode }) {
-  const { firebaseUser, institution } = useAuth();
+  const { authUser, institution } = useAuth();
   const [exams, setExams] = useState<ExamRecord[]>([]);
   const [activeExam, setActiveExam] = useState<ExamRecord | null>(null);
   const [students, setStudents] = useState<StudentRecord[]>([]);
@@ -117,14 +117,13 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
 
   const selectPlanVersion = useCallback(
     async (plan: SeatingPlanRecord, examOverride?: ExamRecord) => {
-      if (!firebaseUser || !institution) return;
+      if (!authUser || !institution) return;
       const targetExam = examOverride ?? activeExam;
       if (!targetExam) return;
       const rooms = await loadPlanRoomAllocations(
         institution.id,
         targetExam.id,
-        plan.id,
-        firebaseUser.uid
+        plan.id
       );
       setActivePlan(plan);
       setRoomAllocations(rooms);
@@ -169,15 +168,15 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
         capacitySufficient: plan.auditReport.capacitySufficient
       });
     },
-    [firebaseUser, institution, activeExam]
+    [authUser, institution, activeExam]
   );
 
   const selectExam = useCallback(
     async (examId: string) => {
-      if (!firebaseUser || !institution) return;
+      if (!authUser || !institution) return;
       setLoadingWorkspace(true);
       try {
-        const bundle = await loadExamBundle(institution.id, examId, firebaseUser.uid);
+        const bundle = await loadExamBundle(institution.id, examId);
         setActiveExam(bundle.exam);
         setStudents(bundle.students);
         setClassrooms(bundle.classrooms);
@@ -196,11 +195,11 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
         setLoadingWorkspace(false);
       }
     },
-    [firebaseUser, institution, selectPlanVersion]
+    [authUser, institution, selectPlanVersion]
   );
 
   const refreshExams = useCallback(async () => {
-    if (!firebaseUser || !institution) {
+    if (!authUser || !institution) {
       setExams([]);
       setAuditLogs([]);
       return;
@@ -208,8 +207,8 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
     setLoadingWorkspace(true);
     try {
       const [examList, logs] = await Promise.all([
-        listExams(institution.id, firebaseUser.uid),
-        listAuditLogs(institution.id, firebaseUser.uid)
+        listExams(institution.id),
+        listAuditLogs(institution.id)
       ]);
       setExams(examList);
       setAuditLogs(logs);
@@ -219,10 +218,10 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
     } finally {
       setLoadingWorkspace(false);
     }
-  }, [firebaseUser, institution, activeExam, selectExam]);
+  }, [authUser, institution, activeExam, selectExam]);
 
   useEffect(() => {
-    if (firebaseUser && institution) {
+    if (authUser && institution) {
       refreshExams();
     } else {
       setExams([]);
@@ -236,7 +235,7 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
       setCurrentAuditReport(null);
       setAuditLogs([]);
     }
-  }, [firebaseUser, institution]);
+  }, [authUser, institution]);
 
   const saveCurrentExamData = useCallback(
     async (params: {
@@ -250,7 +249,7 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
       classrooms: ClassroomConfig[];
       isNew?: boolean;
     }) => {
-      if (!firebaseUser || !institution) {
+      if (!authUser || !institution) {
         throw new Error('Authentication and institution profile required.');
       }
       setSavingWorkspace(true);
@@ -261,7 +260,7 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
 
         const savedId = await saveExamWithStudentsAndClassrooms({
           institutionId: institution.id,
-          ownerId: firebaseUser.uid,
+          ownerId: authUser.uid,
           exam: {
             id: params.examMeta.id,
             name: params.examMeta.name,
@@ -292,8 +291,8 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
         });
 
         const [examList, logs] = await Promise.all([
-          listExams(institution.id, firebaseUser.uid),
-          listAuditLogs(institution.id, firebaseUser.uid)
+          listExams(institution.id),
+          listAuditLogs(institution.id)
         ]);
         setExams(examList);
         setAuditLogs(logs);
@@ -303,7 +302,7 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
         setSavingWorkspace(false);
       }
     },
-    [firebaseUser, institution, selectExam]
+    [authUser, institution, selectExam]
   );
 
   const runAndSaveSeatingPlan = useCallback(
@@ -323,7 +322,7 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
       customRule?: CustomAllocationRule;
       aiSummary?: string;
     }) => {
-      if (!firebaseUser || !institution) {
+      if (!authUser || !institution) {
         throw new Error('Authentication and institution profile required.');
       }
 
@@ -344,7 +343,7 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
           }
           targetExamId = await saveExamWithStudentsAndClassrooms({
             institutionId: institution.id,
-            ownerId: firebaseUser.uid,
+            ownerId: authUser.uid,
             exam: {
               ...params.examMeta,
               id: undefined,
@@ -366,7 +365,7 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
         } else if (params.examMeta && targetExamId) {
           await saveExamWithStudentsAndClassrooms({
             institutionId: institution.id,
-            ownerId: firebaseUser.uid,
+            ownerId: authUser.uid,
             exam: {
               ...params.examMeta,
               id: targetExamId,
@@ -424,10 +423,10 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
           isSequentialMode: params.strategy === 'sequential'
         });
 
-        // 3. Persist versioned seating plan + room allocations in Firestore
+        // 3. Persist versioned seating plan + room allocations in Firebase Firestore
         const savedPlan = await saveSeatingPlanVersion({
           institutionId: institution.id,
-          ownerId: firebaseUser.uid,
+          ownerId: authUser.uid,
           examId: targetExamId,
           examName: targetExamName,
           seatingMode: params.seatingMode,
@@ -444,9 +443,9 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
         setActivePlan(savedPlan);
 
         const [examList, logs, bundle] = await Promise.all([
-          listExams(institution.id, firebaseUser.uid),
-          listAuditLogs(institution.id, firebaseUser.uid),
-          loadExamBundle(institution.id, targetExamId, firebaseUser.uid)
+          listExams(institution.id),
+          listAuditLogs(institution.id),
+          loadExamBundle(institution.id, targetExamId)
         ]);
         setExams(examList);
         setAuditLogs(logs);
@@ -460,7 +459,7 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
         setSavingWorkspace(false);
       }
     },
-    [firebaseUser, institution, activeExam, exams]
+    [authUser, institution, activeExam, exams]
   );
 
   const quickGenerateExamAndPlan = useCallback(
@@ -503,31 +502,31 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
 
   const duplicateExam = useCallback(
     async (examId: string) => {
-      if (!firebaseUser || !institution) throw new Error('Not authenticated');
-      const newId = await duplicateExamRecord(institution.id, examId, firebaseUser.uid);
+      if (!authUser || !institution) throw new Error('Not authenticated');
+      const newId = await duplicateExamRecord(institution.id, examId, authUser.uid);
       await refreshExams();
       await selectExam(newId);
       return newId;
     },
-    [firebaseUser, institution, refreshExams, selectExam]
+    [authUser, institution, refreshExams, selectExam]
   );
 
   const setExamStatus = useCallback(
     async (examId: string, status: ExamRecord['status']) => {
-      if (!firebaseUser || !institution) throw new Error('Not authenticated');
-      await updateExamStatus(institution.id, examId, firebaseUser.uid, status);
+      if (!authUser || !institution) throw new Error('Not authenticated');
+      await updateExamStatus(institution.id, examId, status);
       await refreshExams();
       if (activeExam?.id === examId) {
         await selectExam(examId);
       }
     },
-    [firebaseUser, institution, activeExam, refreshExams, selectExam]
+    [authUser, institution, activeExam, refreshExams, selectExam]
   );
 
   const deleteExam = useCallback(
     async (examId: string, examName: string) => {
-      if (!firebaseUser || !institution) throw new Error('Not authenticated');
-      await deleteExamRecord(institution.id, examId, firebaseUser.uid, examName);
+      if (!authUser || !institution) throw new Error('Not authenticated');
+      await deleteExamRecord(institution.id, examId, examName);
       if (activeExam?.id === examId) {
         setActiveExam(null);
         setStudents([]);
@@ -540,7 +539,7 @@ export function ExamWorkspaceProvider({ children }: { children: React.ReactNode 
       }
       await refreshExams();
     },
-    [firebaseUser, institution, activeExam, refreshExams]
+    [authUser, institution, activeExam, refreshExams]
   );
 
   return (

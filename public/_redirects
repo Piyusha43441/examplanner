@@ -1,1 +1,10 @@
+/api/health /.netlify/functions/health 200
+/api/server-time /.netlify/functions/server-time 200
+/api/ai/scan-data /.netlify/functions/scan-data 200
+/api/ai/orchestrate-audit /.netlify/functions/orchestrate-audit 200
+/api/payment-proof/upload-url /.netlify/functions/payment-proof-upload-url 200
+/api/payment-proof/verify /.netlify/functions/payment-proof-verify 200
+/api/payment-proof/cleanup /.netlify/functions/payment-proof-cleanup 200
+/api/payment-proof/preview-url /.netlify/functions/payment-proof-preview-url 200
+/api/payment-proof/institution-preview-url /.netlify/functions/payment-proof-institution-preview-url 200
 /* /index.html 200

@@ -15,7 +15,6 @@ import {
   ZoomIn,
   ZoomOut
 } from 'lucide-react';
-import { sendEmailVerification } from 'firebase/auth';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { ADMIN_EMAIL } from '../core/subscriptionConstants';
@@ -25,6 +24,8 @@ import {
   PaymentRequestRecord,
   SubscriptionRecord
 } from '../core/types';
+import { auth } from '../firebase/config';
+import { resendVerificationEmail } from '../firebase/service';
 import {
   approvePaymentRequest,
   fetchAdminDashboardData,
@@ -40,11 +41,12 @@ import {
 type AdminTab = 'pending' | 'subscriptions' | 'payments' | 'audit';
 
 export function AdminPanelPage() {
-  const { firebaseUser } = useAuth();
+  const { authUser } = useAuth();
   const {
     isAdmin,
     isAdminEmail,
-    hasAdminCustomClaim,
+    emailVerified,
+    hasAdminClaim,
     serverNowMs,
     refreshSubscription,
     refreshAdminVerification
@@ -140,7 +142,11 @@ export function AdminPanelPage() {
     setZoomLevel(1);
     setProofLoading(true);
     try {
-      const url = await getPaymentProofUrl(req.screenshotStoragePath, req.paymentRequestId, true);
+      const url = await getPaymentProofUrl(
+        req.screenshotStoragePath,
+        req.paymentRequestId,
+        'admin'
+      );
       setProofUrl(url);
     } catch (err) {
       setProofError(
@@ -154,7 +160,7 @@ export function AdminPanelPage() {
   };
 
   const handleApprove = async (req: PaymentRequestRecord) => {
-    if (!firebaseUser) return;
+    if (!authUser) return;
     setActionBanner(null);
     setActionError(null);
     setProcessingId(req.paymentRequestId);
@@ -175,7 +181,7 @@ export function AdminPanelPage() {
   };
 
   const handleConfirmReject = async () => {
-    if (!firebaseUser || !rejectTarget) return;
+    if (!authUser || !rejectTarget) return;
     setActionBanner(null);
     setActionError(null);
     setProcessingId(rejectTarget.paymentRequestId);
@@ -199,7 +205,7 @@ export function AdminPanelPage() {
   };
 
   const handleConfirmRevoke = async () => {
-    if (!firebaseUser || !revokeTarget) return;
+    if (!authUser || !revokeTarget) return;
     setActionBanner(null);
     setActionError(null);
     setProcessingId(revokeTarget.subscriptionId);
@@ -318,14 +324,14 @@ export function AdminPanelPage() {
   }, [paymentRequests, payFilter, subSearch]);
 
   const handleSendAdminVerification = async () => {
-    if (!firebaseUser) return;
+    if (!authUser?.email) return;
     setSendingVerification(true);
     setVerificationMsg(null);
     setVerificationErr(null);
     try {
-      await sendEmailVerification(firebaseUser);
+      await resendVerificationEmail(authUser.email);
       setVerificationMsg(
-        `Verification link sent to ${firebaseUser.email}. Open your inbox, click the link, then click "I've Verified — Refresh Access".`
+        `Verification link sent to ${authUser.email}. Open your inbox, click the link, then click "I've Verified — Refresh Access".`
       );
     } catch (err) {
       setVerificationErr(
@@ -341,10 +347,12 @@ export function AdminPanelPage() {
     setVerificationMsg(null);
     setVerificationErr(null);
     try {
-      const verified = await refreshAdminVerification();
-      if (!verified) {
+      const ok = await refreshAdminVerification();
+      if (!ok) {
         setVerificationErr(
-          'Email is not verified yet. Please click the verification link sent to your inbox first.'
+          !auth.currentUser?.emailVerified
+            ? 'Email is not verified yet. Please click the verification link sent to your inbox first.'
+            : 'Firebase custom claim admin === true is not present on this token yet. Run the admin claim script, then sign out and sign back in.'
         );
       }
     } catch (err) {
@@ -378,8 +386,9 @@ export function AdminPanelPage() {
           Verify Administrator Email
         </h2>
         <p className="text-sm text-slate-600 leading-relaxed">
-          You are signed in as <span className="font-mono font-semibold text-slate-900">{firebaseUser?.email}</span>,
-          but your email address is not verified yet. For security, backend rules require a verified email before unlocking Admin Panel controls.
+          You are signed in as{' '}
+          <span className="font-mono font-semibold text-slate-900">{authUser?.email}</span>,
+          but your email address is not verified yet. A verified email is required before unlocking Admin Panel controls.
         </p>
 
         {verificationMsg && (
@@ -414,7 +423,7 @@ export function AdminPanelPage() {
             ) : (
               <RefreshCw className="w-3.5 h-3.5" />
             )}
-            I&apos;ve Verified — Refresh Access
+            Refresh Verification
           </button>
         </div>
       </div>
@@ -433,14 +442,10 @@ export function AdminPanelPage() {
             </h2>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Signed in as <span className="font-mono text-slate-800">{firebaseUser?.email}</span> ·{' '}
-            {hasAdminCustomClaim ? (
-              <span className="text-emerald-700 font-semibold">Custom Claim Verified (admin: true)</span>
-            ) : (
-              <span className="text-amber-700 font-medium">
-                Verified Admin Email · Run setAdminClaim script to stamp custom claim
-              </span>
-            )}
+            Signed in as <span className="font-mono text-slate-800">{authUser?.email}</span> ·{' '}
+            <span className="text-emerald-700 font-semibold">
+              Verified Firebase Administrator
+            </span>
           </p>
         </div>
 

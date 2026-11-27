@@ -26,7 +26,7 @@ import {
   buildUpiPaymentUri,
   SUBSCRIPTION_PLAN
 } from '../core/subscriptionConstants';
-import { makeId } from '../firebase/service';
+import { makeUuid } from '../firebase/service';
 import {
   formatDateOnly,
   formatPaymentErrorMessage,
@@ -38,7 +38,7 @@ import {
   validateProofFileBasic
 } from '../firebase/subscriptionService';
 
-type UploadUiState = 'idle' | 'preparing' | 'uploading' | 'paused' | 'saving' | 'success' | 'failed';
+type UploadUiState = 'idle' | 'preparing' | 'uploading' | 'paused' | 'verifying' | 'saving' | 'success' | 'failed';
 
 interface UploadAttemptState {
   paymentRequestId: string;
@@ -46,6 +46,7 @@ interface UploadAttemptState {
   screenshotStoragePath: string | null;
   screenshotFileName: string;
   screenshotMimeType: string;
+  screenshotSizeBytes?: number;
 }
 
 function getFileFingerprint(file: File): string {
@@ -53,7 +54,7 @@ function getFileFingerprint(file: File): string {
 }
 
 export function SubscribePage() {
-  const { firebaseUser, userProfile, institution, refreshProfile } = useAuth();
+  const { authUser, userProfile, institution, refreshProfile } = useAuth();
   const {
     activeSubscription,
     latestSubscription,
@@ -62,7 +63,7 @@ export function SubscribePage() {
     subscriptionStatus,
     lockedExaminationType,
     remainingDays,
-    cloudflareError,
+    firebaseError,
     refreshSubscription
   } = useSubscription();
   const navigate = useNavigate();
@@ -148,11 +149,12 @@ export function SubscribePage() {
     const fingerprint = getFileFingerprint(file);
     if (attemptRef.current?.fileFingerprint !== fingerprint) {
       const freshAttempt: UploadAttemptState = {
-        paymentRequestId: makeId('payreq'),
+        paymentRequestId: makeUuid(),
         fileFingerprint: fingerprint,
         screenshotStoragePath: null,
         screenshotFileName: file.name,
-        screenshotMimeType: validation.mimeType || file.type || 'image/jpeg'
+        screenshotMimeType: validation.mimeType || file.type || 'image/jpeg',
+        screenshotSizeBytes: file.size
       };
       attemptRef.current = freshAttempt;
       setUploadedAttempt(freshAttempt);
@@ -174,7 +176,7 @@ export function SubscribePage() {
     setSubmitError(null);
     setSubmitSuccess(null);
 
-    if (!firebaseUser || !institution) {
+    if (!authUser || !institution) {
       setSubmitError('Authentication and institution profile are required.');
       return;
     }
@@ -211,11 +213,12 @@ export function SubscribePage() {
 
     try {
       const activeAttempt: UploadAttemptState = currentAttempt ?? {
-        paymentRequestId: makeId('payreq'),
+        paymentRequestId: makeUuid(),
         fileFingerprint: proofFile ? getFileFingerprint(proofFile) : 'retained',
         screenshotStoragePath: null,
         screenshotFileName: proofFile?.name || 'proof',
-        screenshotMimeType: proofFile?.type || 'image/jpeg'
+        screenshotMimeType: proofFile?.type || 'image/jpeg',
+        screenshotSizeBytes: proofFile?.size
       };
       attemptRef.current = activeAttempt;
       setUploadedAttempt(activeAttempt);
@@ -225,13 +228,14 @@ export function SubscribePage() {
         institutionId: institution.id,
         institutionOwnerId: institution.ownerId,
         institutionName: institution.name,
-        userId: firebaseUser.uid,
-        userEmail: userProfile?.email || firebaseUser.email || '',
+        userId: authUser.uid,
+        userEmail: userProfile?.email || authUser.email || '',
         transactionReferenceId: txn.length > 0 ? txn : null,
         file: proofFile ?? undefined,
         existingScreenshotStoragePath: activeAttempt.screenshotStoragePath ?? undefined,
         existingScreenshotFileName: activeAttempt.screenshotFileName,
         existingScreenshotMimeType: activeAttempt.screenshotMimeType,
+        existingScreenshotSizeBytes: activeAttempt.screenshotSizeBytes,
         onStageChange: (stage) => {
           setSubmitStage(stage);
         },
@@ -247,10 +251,19 @@ export function SubscribePage() {
             fileFingerprint: activeAttempt.fileFingerprint,
             screenshotStoragePath: uploaded.screenshotStoragePath,
             screenshotFileName: uploaded.screenshotFileName,
-            screenshotMimeType: uploaded.screenshotMimeType
+            screenshotMimeType: uploaded.screenshotMimeType,
+            screenshotSizeBytes: uploaded.screenshotSizeBytes
           };
           attemptRef.current = updatedAttempt;
           setUploadedAttempt(updatedAttempt);
+        },
+        onOrphanCleaned: () => {
+          const resetAttempt: UploadAttemptState = {
+            ...activeAttempt,
+            screenshotStoragePath: null
+          };
+          attemptRef.current = resetAttempt;
+          setUploadedAttempt(resetAttempt);
         }
       });
 
@@ -334,14 +347,24 @@ export function SubscribePage() {
         </div>
       </div>
 
-      {/* Cloudflare Backend Connection Warning if Unconfigured */}
-      {cloudflareError && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3 text-xs text-amber-950">
-          <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-          <div>
-            <div className="font-semibold">Cloudflare Subscription API Notice</div>
-            <div className="mt-0.5">{cloudflareError}</div>
+      {/* Firebase Backend Connection Warning if Unconfigured or Failing */}
+      {firebaseError && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start justify-between gap-3 text-xs text-amber-950">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-semibold">Firebase Backend Notice</div>
+              <div className="mt-0.5 font-mono text-[11px] break-all">{firebaseError}</div>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={() => void refreshSubscription()}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold bg-white border border-amber-300 hover:bg-amber-100 rounded-md shrink-0"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Retry
+          </button>
         </div>
       )}
 
@@ -586,7 +609,7 @@ export function SubscribePage() {
                 <input
                   type="text"
                   disabled
-                  value={userProfile?.email || firebaseUser?.email || ''}
+                  value={userProfile?.email || authUser?.email || ''}
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-600"
                 />
               </div>
@@ -649,9 +672,11 @@ export function SubscribePage() {
                 <div className="flex items-center justify-between gap-2 text-xs font-medium text-blue-900">
                   <span className="inline-flex items-center gap-1.5">
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
-                    {submitStage === 'preparing' && 'Preparing file...'}
-                    {submitStage === 'uploading' && `Uploading ${uploadProgress}%`}
-                    {submitStage === 'saving' && 'Saving payment request...'}
+                    {submitStage === 'preparing' && 'Validating file & requesting secure upload session...'}
+                    {submitStage === 'uploading' && `Uploading proof to private storage (${uploadProgress}%)`}
+                    {submitStage === 'paused' && `Upload paused (${uploadProgress}%)`}
+                    {submitStage === 'verifying' && 'Verifying uploaded screenshot on server...'}
+                    {submitStage === 'saving' && 'Saving payment request in Firestore...'}
                   </span>
                   <div className="flex items-center gap-2">
                     <span className="font-mono tabular-nums font-semibold">
@@ -707,6 +732,8 @@ export function SubscribePage() {
                 {submitting
                   ? submitStage === 'saving'
                     ? 'Saving Payment Request...'
+                    : submitStage === 'verifying'
+                    ? 'Verifying Screenshot...'
                     : 'Uploading Payment Proof...'
                   : canRetrySaveOnly
                   ? 'Retry Payment Submission'
@@ -767,7 +794,7 @@ export function SubscribePage() {
                             const url = await getPaymentProofUrl(
                               req.screenshotStoragePath,
                               req.paymentRequestId,
-                              false
+                              'institution'
                             );
                             const w = window.open(url, '_blank', 'noopener,noreferrer');
                             if (!w) {
@@ -776,7 +803,9 @@ export function SubscribePage() {
                               a.download = req.screenshotFileName || 'payment_proof';
                               a.click();
                             }
-                            window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                            if (url.startsWith('blob:')) {
+                              window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                            }
                           } catch (err) {
                             setSubmitError(formatPaymentErrorMessage(err));
                           }

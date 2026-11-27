@@ -22,11 +22,13 @@ import { SeatingPlannerPage } from './pages/SeatingPlannerPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { StudentDataPage } from './pages/StudentDataPage';
 import { SubscribePage } from './pages/SubscribePage';
+import { DiagnosticsPage } from './pages/DiagnosticsPage';
 
 function AppRoutes() {
-  const { firebaseUser, userProfile, institution, authReady, loadingProfile } = useAuth();
+  const { authUser, userProfile, institution, authReady, loadingProfile, isPasswordRecovery } =
+    useAuth();
 
-  if (!authReady || (firebaseUser && loadingProfile && !institution)) {
+  if (!authReady || (authUser && loadingProfile && !institution)) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col">
         <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-600">
@@ -38,10 +40,21 @@ function AppRoutes() {
     );
   }
 
-  if (!firebaseUser || !userProfile || !institution) {
+  if (isPasswordRecovery) {
     return (
       <Routes>
         <Route path="/about" element={<AboutFounderPage isPublicView />} />
+        <Route path="/diagnostics" element={<DiagnosticsPage />} />
+        <Route path="*" element={<AuthPage />} />
+      </Routes>
+    );
+  }
+
+  if (!authUser || !userProfile || !institution) {
+    return (
+      <Routes>
+        <Route path="/about" element={<AboutFounderPage isPublicView />} />
+        <Route path="/diagnostics" element={<DiagnosticsPage />} />
         <Route path="/login" element={<AuthPage />} />
         <Route path="*" element={<AuthPage />} />
       </Routes>
@@ -100,6 +113,7 @@ function AppRoutes() {
             <Route path="/admin" element={<AdminPanelPage />} />
             <Route path="/profile" element={<InstitutionProfilePage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/diagnostics" element={<DiagnosticsPage />} />
             <Route path="/guide" element={<GuidePage />} />
             <Route path="/about" element={<AboutFounderPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

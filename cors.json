@@ -1,0 +1,21 @@
+[
+  {
+    "origin": [
+      "*",
+      "https://*.netlify.app",
+      "https://ais-dev-aewbzri6lknsxvnf6a3cii-697000586977.asia-east1.run.app",
+      "https://ais-pre-aewbzri6lknsxvnf6a3cii-697000586977.asia-east1.run.app",
+      "http://localhost:3000"
+    ],
+    "method": ["GET", "PUT", "POST", "HEAD", "OPTIONS"],
+    "responseHeader": [
+      "Content-Type",
+      "Access-Control-Allow-Origin",
+      "Authorization",
+      "Content-Length",
+      "User-Agent",
+      "x-goog-resumable"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]

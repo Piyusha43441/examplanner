@@ -1,45 +1,50 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { User as FirebaseUser, onAuthStateChanged } from 'firebase/auth';
 import { InstitutionProfile, UserProfile } from '../core/types';
-import { auth, isFirebaseConfigured, testFirestoreConnection } from '../firebase/config';
+import { auth, isFirebaseConfigured, testFirebaseConnection } from '../firebase/config';
 import { fetchUserAndInstitution } from '../firebase/service';
 
 interface AuthContextValue {
-  firebaseUser: User | null;
+  authUser: FirebaseUser | null;
   userProfile: UserProfile | null;
   institution: InstitutionProfile | null;
   authReady: boolean;
   loadingProfile: boolean;
   dbReachable: boolean;
   configError: string | null;
+  isPasswordRecovery: boolean;
+  clearPasswordRecovery: () => void;
   refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
-  firebaseUser: null,
+  authUser: null,
   userProfile: null,
   institution: null,
   authReady: false,
   loadingProfile: false,
   dbReachable: true,
   configError: null,
+  isPasswordRecovery: false,
+  clearPasswordRecovery: () => {},
   refreshProfile: async () => {}
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [institution, setInstitution] = useState<InstitutionProfile | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [dbReachable, setDbReachable] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
-  const loadProfile = useCallback(async (uid: string) => {
+  const loadProfile = useCallback(async (user: FirebaseUser) => {
     setLoadingProfile(true);
     try {
-      const { user, institution: inst } = await fetchUserAndInstitution(uid);
-      setUserProfile(user);
+      const { user: profile, institution: inst } = await fetchUserAndInstitution(user);
+      setUserProfile(profile);
       setInstitution(inst);
     } catch (err) {
       console.error('Failed loading user profile:', err);
@@ -49,7 +54,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    testFirestoreConnection().then((res) => {
+    let active = true;
+
+    testFirebaseConnection().then((res) => {
+      if (!active) return;
       setDbReachable(res.reachable);
       if (!res.reachable && res.error) {
         setConfigError(res.error);
@@ -58,14 +66,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (!isFirebaseConfigured) {
       setAuthReady(true);
-      setConfigError('Firebase configuration is incomplete.');
-      return;
+      setConfigError('Firebase configuration is incomplete. Set VITE_FIREBASE_* variables.');
+      return () => {
+        active = false;
+      };
     }
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setFirebaseUser(user);
+      if (!active) return;
+      setAuthUser(user);
       if (user) {
-        await loadProfile(user.uid);
+        await loadProfile(user);
       } else {
         setUserProfile(null);
         setInstitution(null);
@@ -73,25 +84,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthReady(true);
     });
 
-    return () => unsubscribe();
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, [loadProfile]);
 
+  const clearPasswordRecovery = useCallback(() => {
+    setIsPasswordRecovery(false);
+  }, []);
+
   const refreshProfile = useCallback(async () => {
-    if (firebaseUser) {
-      await loadProfile(firebaseUser.uid);
+    if (authUser) {
+      await loadProfile(authUser);
     }
-  }, [firebaseUser, loadProfile]);
+  }, [authUser, loadProfile]);
 
   return (
     <AuthContext.Provider
       value={{
-        firebaseUser,
+        authUser,
         userProfile,
         institution,
         authReady,
         loadingProfile,
         dbReachable,
         configError,
+        isPasswordRecovery,
+        clearPasswordRecovery,
         refreshProfile
       }}
     >

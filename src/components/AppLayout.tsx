@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
+  Activity,
   AlertCircle,
   BookOpen,
   Building2,
@@ -56,6 +57,7 @@ const BASE_NAV_ITEMS: NavItem[] = [
   { to: '/subscribe', label: 'Subscription', icon: CreditCard },
   { to: '/profile', label: 'Institution Profile', icon: Building2 },
   { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/diagnostics', label: 'Diagnostics', icon: Activity },
   { to: '/guide', label: 'Guide', icon: BookOpen }
 ];
 
@@ -292,7 +294,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
         {!dbReachable && (
           <div className="bg-amber-50 border-b border-amber-200 px-6 py-2.5 text-xs text-amber-900 no-print">
-            Cloud Firestore connection could not be verified. Check your Firebase configuration or network connection before saving records.
+            Firebase backend connection could not be verified. Check your VITE_FIREBASE_API_KEY and VITE_FIREBASE_PROJECT_ID configuration or network connection before saving records.
           </div>
         )}
 

@@ -1,0 +1,88 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# API Route Rewrites to Netlify Serverless Functions
+[[redirects]]
+  from = "/api/health"
+  to = "/.netlify/functions/health"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/server-time"
+  to = "/.netlify/functions/server-time"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/ai/scan-data"
+  to = "/.netlify/functions/scan-data"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/ai/orchestrate-audit"
+  to = "/.netlify/functions/orchestrate-audit"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/payment-proof/upload-url"
+  to = "/.netlify/functions/payment-proof-upload-url"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/payment-proof/verify"
+  to = "/.netlify/functions/payment-proof-verify"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/payment-proof/cleanup"
+  to = "/.netlify/functions/payment-proof-cleanup"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/payment-proof/preview-url"
+  to = "/.netlify/functions/payment-proof-preview-url"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/payment-proof/institution-preview-url"
+  to = "/.netlify/functions/payment-proof-institution-preview-url"
+  status = 200
+  force = true
+
+# Catch-all SPA fallback for React Router navigation
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Production Security & Performance Headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://*.googleusercontent.com; connect-src 'self' https://*.r2.cloudflarestorage.com https://*.workers.dev https://*.googleapis.com https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com; frame-src 'self' blob: data: https://*.r2.cloudflarestorage.com https://*.firebaseapp.com; object-src 'none'; base-uri 'self';"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Cache-Control = "no-store, no-cache, must-revalidate"

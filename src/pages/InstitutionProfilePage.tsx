@@ -14,7 +14,7 @@ const INSTITUTION_TYPES: InstitutionType[] = [
 ];
 
 export function InstitutionProfilePage() {
-  const { firebaseUser, userProfile, institution, refreshProfile } = useAuth();
+  const { authUser, userProfile, institution, refreshProfile } = useAuth();
 
   const [fullName, setFullName] = useState(userProfile?.fullName ?? '');
   const [name, setName] = useState(institution?.name ?? '');
@@ -71,13 +71,13 @@ export function InstitutionProfilePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!firebaseUser || !institution || !userProfile) return;
+    if (!authUser || !institution || !userProfile) return;
     setSaving(true);
     setSavedMsg(null);
     setErrorMsg(null);
     try {
       await Promise.all([
-        updateInstitutionProfile(institution.id, firebaseUser.uid, {
+        updateInstitutionProfile(institution.id, authUser.uid, {
           name,
           type,
           address,
@@ -87,7 +87,7 @@ export function InstitutionProfilePage() {
           mobile,
           logoDataUrl
         }),
-        updateCoordinatorName(firebaseUser.uid, fullName, userProfile.email)
+        updateCoordinatorName(authUser.uid, fullName, userProfile.email)
       ]);
       await refreshProfile();
       setSavedMsg('Institution profile and coordinator details updated.');

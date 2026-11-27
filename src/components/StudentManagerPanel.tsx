@@ -28,9 +28,7 @@ import {
   normalizeRollNumber
 } from '../core/rollNumberEngine';
 import { StudentRecord } from '../core/types';
-import { useAuth } from '../context/AuthContext';
 import { useWorkspace } from '../context/ExamWorkspaceContext';
-import { uploadFileToFirebaseStorage } from '../firebase/service';
 import { AiDataScanResponse, runAiDataScanner } from '../services/aiAgents';
 
 interface Props {
@@ -48,7 +46,6 @@ export function StudentManagerPanel({
   rollRangeEnd = '',
   onRangeMetaChange
 }: Props) {
-  const { institution } = useAuth();
   const { aiAssistantEnabled } = useWorkspace();
 
   const [tab, setTab] = useState<'range' | 'upload' | 'manual' | 'paste'>('range');
@@ -150,10 +147,6 @@ export function StudentManagerPanel({
       }
       setParsedUpload(parsed);
       setMapping(autoDetectColumnMapping(parsed.headers));
-
-      if (institution) {
-        uploadFileToFirebaseStorage(institution.id, 'imports', file.name, file);
-      }
 
       if (aiAssistantEnabled) {
         setAiScanning(true);

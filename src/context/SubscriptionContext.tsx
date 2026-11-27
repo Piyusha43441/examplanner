@@ -5,15 +5,14 @@ import {
   PaymentRequestRecord,
   SubscriptionRecord
 } from '../core/types';
+import { auth } from '../firebase/config';
 import {
   fetchServerNowMs,
+  fetchSubscriptionStatus,
+  FirebaseApiError,
   markNotificationAsRead,
   toMillis
 } from '../firebase/subscriptionService';
-import {
-  CloudflareApiError,
-  fetchSubscriptionStatusFromCloudflare
-} from '../services/cloudflareApi';
 import { useAuth } from './AuthContext';
 
 export type EffectiveSubscriptionStatus =
@@ -41,9 +40,10 @@ interface SubscriptionContextValue {
   serverNowMs: number;
   isAdmin: boolean;
   isAdminEmail: boolean;
-  hasAdminCustomClaim: boolean;
-  cloudflareReachable: boolean;
-  cloudflareError: string | null;
+  emailVerified: boolean;
+  hasAdminClaim: boolean;
+  firebaseReachable: boolean;
+  firebaseError: string | null;
   paywallOpen: boolean;
   paywallFeatureLabel: string | null;
   openPaywallModal: (featureLabel?: string) => void;
@@ -58,22 +58,19 @@ interface SubscriptionContextValue {
 const SubscriptionContext = createContext<SubscriptionContextValue | null>(null);
 
 export function SubscriptionProvider({ children }: { children: React.ReactNode }) {
-  const { firebaseUser, institution } = useAuth();
+  const { authUser, institution } = useAuth();
 
   const [subscriptions, setSubscriptions] = useState<SubscriptionRecord[]>([]);
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequestRecord[]>([]);
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [loadingSubscription, setLoadingSubscription] = useState(true);
-  const [cloudflareReachable, setCloudflareReachable] = useState(true);
-  const [cloudflareError, setCloudflareError] = useState<string | null>(null);
+  const [firebaseReachable, setFirebaseReachable] = useState(true);
+  const [firebaseError, setFirebaseError] = useState<string | null>(null);
 
-  // Server-synced clock offset: serverNow = Date.now() + serverOffsetMs
   const [serverOffsetMs, setServerOffsetMs] = useState(0);
   const [tickNowMs, setTickNowMs] = useState(() => Date.now());
-
-  const [hasAdminCustomClaim, setHasAdminCustomClaim] = useState(false);
-  const [adminClaimBlocked, setAdminClaimBlocked] = useState(false);
   const [emailVerifiedState, setEmailVerifiedState] = useState(false);
+  const [hasAdminClaimState, setHasAdminClaimState] = useState(false);
 
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [paywallFeatureLabel, setPaywallFeatureLabel] = useState<string | null>(null);
@@ -87,41 +84,39 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   }, []);
 
   const refreshSubscription = useCallback(async () => {
-    if (!firebaseUser || !institution) {
+    if (!authUser || !institution || !auth.currentUser) {
       setSubscriptions([]);
       setPaymentRequests([]);
       setNotifications([]);
       setLoadingSubscription(false);
-      setCloudflareError(null);
+      setFirebaseError(null);
       return;
     }
 
     try {
-      const payload = await fetchSubscriptionStatusFromCloudflare(
-        institution.id,
-        institution.name
-      );
+      const payload = await fetchSubscriptionStatus(institution.id);
       setSubscriptions(payload.subscriptions || []);
       setPaymentRequests(payload.paymentRequests || []);
       setNotifications(payload.notifications || []);
       setServerOffsetMs(payload.serverNowMs - Date.now());
       setTickNowMs(payload.serverNowMs);
-      setCloudflareReachable(true);
-      setCloudflareError(null);
-    } catch (err) {
-      if (err instanceof CloudflareApiError) {
-        setCloudflareReachable(err.code !== 'CLOUDFLARE_NOT_CONFIGURED' && err.status !== 0);
-        setCloudflareError(err.message);
-        console.warn('Cloudflare subscription API notice:', err.message);
+      setFirebaseReachable(true);
+      setFirebaseError(null);
+    } catch (err: any) {
+      console.error('[SubscriptionContext] fetchSubscriptionStatus failed:', err);
+      if (err instanceof FirebaseApiError) {
+        setFirebaseReachable(err.status !== 503);
+        setFirebaseError(err.message);
       } else {
-        setCloudflareReachable(false);
-        setCloudflareError('Unable to reach Cloudflare subscription API.');
-        console.warn('Cloudflare subscription API notice:', err);
+        setFirebaseReachable(false);
+        const code = err?.code ? `[${err.code}] ` : '';
+        const msg = err?.message || 'Unable to reach Firebase subscription service.';
+        setFirebaseError(`${code}${msg}`);
       }
     } finally {
       setLoadingSubscription(false);
     }
-  }, [firebaseUser, institution]);
+  }, [authUser, institution]);
 
   useEffect(() => {
     setLoadingSubscription(true);
@@ -151,46 +146,46 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     };
   }, [serverOffsetMs]);
 
-  useEffect(() => {
-    let active = true;
-    if (!firebaseUser) {
-      setHasAdminCustomClaim(false);
-      setAdminClaimBlocked(false);
+  const syncAdminClaims = useCallback(async (forceRefresh = false) => {
+    const current = auth.currentUser || authUser;
+    if (!current) {
       setEmailVerifiedState(false);
-      return;
+      setHasAdminClaimState(false);
+      return false;
     }
-    setEmailVerifiedState(Boolean(firebaseUser.emailVerified));
-    firebaseUser
-      .getIdTokenResult()
-      .then((result) => {
-        if (!active) return;
-        const claimVal = result.claims.admin;
-        setHasAdminCustomClaim(claimVal === true);
-        setAdminClaimBlocked(claimVal !== undefined && claimVal !== true);
-      })
-      .catch(() => {
-        if (!active) return;
-        setHasAdminCustomClaim(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [firebaseUser]);
+
+    const verified = Boolean(current.emailVerified);
+    setEmailVerifiedState(verified);
+
+    let hasClaim = false;
+    if (typeof current.getIdTokenResult === 'function') {
+      try {
+        const result = await current.getIdTokenResult(forceRefresh);
+        hasClaim = result?.claims?.admin === true;
+      } catch {
+        hasClaim = false;
+      }
+    }
+    setHasAdminClaimState(hasClaim);
+    return verified && hasClaim;
+  }, [authUser]);
+
+  useEffect(() => {
+    void syncAdminClaims(false);
+  }, [syncAdminClaims]);
 
   const refreshAdminVerification = useCallback(async () => {
-    if (!firebaseUser) return false;
-    await firebaseUser.reload();
-    const tokenRes = await firebaseUser.getIdTokenResult(true);
-    const verified = Boolean(firebaseUser.emailVerified);
-    setEmailVerifiedState(verified);
-    const claimVal = tokenRes.claims.admin;
-    setHasAdminCustomClaim(claimVal === true);
-    setAdminClaimBlocked(claimVal !== undefined && claimVal !== true);
-    if (verified) {
+    if (!authUser) return false;
+    await auth.currentUser?.reload();
+    if (typeof auth.currentUser?.getIdToken === 'function') {
+      await auth.currentUser.getIdToken(true);
+    }
+    const ok = await syncAdminClaims(true);
+    if (ok) {
       await refreshSubscription();
     }
-    return verified;
-  }, [firebaseUser, refreshSubscription]);
+    return ok;
+  }, [authUser, refreshSubscription, syncAdminClaims]);
 
   const serverNowMs = useMemo(
     () => Math.max(tickNowMs, Date.now() + serverOffsetMs),
@@ -198,14 +193,13 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   );
 
   const isAdminEmail = useMemo(() => {
-    if (!firebaseUser) return false;
-    const emailMatches = (firebaseUser.email || '').trim().toLowerCase() === ADMIN_EMAIL;
-    return emailMatches && !adminClaimBlocked;
-  }, [firebaseUser, adminClaimBlocked]);
+    if (!authUser) return false;
+    return (authUser.email || '').trim().toLowerCase() === ADMIN_EMAIL;
+  }, [authUser]);
 
   const isAdmin = useMemo(() => {
-    return isAdminEmail && emailVerifiedState;
-  }, [isAdminEmail, emailVerifiedState]);
+    return isAdminEmail;
+  }, [isAdminEmail]);
 
   const activeSubscription = useMemo(() => {
     const candidates = subscriptions.filter((sub) => {
@@ -319,9 +313,10 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         serverNowMs,
         isAdmin,
         isAdminEmail,
-        hasAdminCustomClaim,
-        cloudflareReachable,
-        cloudflareError,
+        emailVerified: emailVerifiedState,
+        hasAdminClaim: hasAdminClaimState,
+        firebaseReachable,
+        firebaseError,
         paywallOpen,
         paywallFeatureLabel,
         openPaywallModal,
